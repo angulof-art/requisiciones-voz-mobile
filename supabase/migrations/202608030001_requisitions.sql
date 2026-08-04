@@ -116,7 +116,7 @@ grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.products to authenticated;
 grant select, insert, update, delete on public.requisitions to authenticated;
 grant select, insert, update, delete on public.requisition_items to authenticated;
-grant select, insert on public.requisition_changes to authenticated;
+grant select, insert, update, delete on public.requisition_changes to authenticated;
 
 -- Para pruebas locales sin autenticacion, cree politicas anon temporales solo
 -- en un proyecto de desarrollo aislado. No active anon en produccion.

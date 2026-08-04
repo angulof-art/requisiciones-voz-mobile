@@ -10,7 +10,7 @@
 grant select, insert, update, delete on public.products to anon;
 grant select, insert, update, delete on public.requisitions to anon;
 grant select, insert, update, delete on public.requisition_items to anon;
-grant select, insert on public.requisition_changes to anon;
+grant select, insert, update, delete on public.requisition_changes to anon;
 
 drop policy if exists "products dev anon access" on public.products;
 create policy "products dev anon access" on public.products
