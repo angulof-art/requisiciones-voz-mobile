@@ -47,6 +47,8 @@ const undoStack = [];
 let recognition = null;
 let isListening = false;
 let replaceIndex = null;
+let speechSessionBaseText = "";
+let speechSessionFinalText = "";
 
 const els = {
   screenTitle: document.querySelector("#screenTitle"),
@@ -205,8 +207,9 @@ function navigate(target) {
   if (target === "sync") renderSync();
 }
 
-function processTranscript() {
-  const text = els.transcriptInput.value.trim();
+function processTranscript(textOverride = null) {
+  const hasTextOverride = typeof textOverride === "string";
+  const text = (hasTextOverride ? textOverride : els.transcriptInput.value).trim();
   if (!text) {
     toast("No hay texto para procesar.");
     return;
@@ -623,10 +626,12 @@ function setupSpeechRecognition() {
   }
   recognition = new SpeechRecognition();
   recognition.lang = "es-CR";
-  recognition.continuous = true;
+  recognition.continuous = false;
   recognition.interimResults = true;
   recognition.onstart = () => {
     isListening = true;
+    speechSessionBaseText = normalizeSpeechSegment(els.transcriptInput.value);
+    speechSessionFinalText = "";
     els.voiceButton.classList.add("listening");
     els.voiceButton.setAttribute("aria-pressed", "true");
     els.voicePrimary.textContent = "Escuchando...";
@@ -645,14 +650,72 @@ function setupSpeechRecognition() {
     let interimText = "";
     for (let index = event.resultIndex; index < event.results.length; index += 1) {
       const transcript = event.results[index][0].transcript;
-      if (event.results[index].isFinal) finalText += transcript;
-      else interimText += transcript;
+      if (event.results[index].isFinal) finalText = [finalText, transcript].filter(Boolean).join(" ");
+      else interimText = [interimText, transcript].filter(Boolean).join(" ");
     }
-    const combined = [els.transcriptInput.value, finalText || interimText].filter(Boolean).join(" ").trim();
-    els.transcriptInput.value = combined;
-    els.speechStatus.textContent = finalText ? "Procesando pedido..." : "Escuchando...";
-    if (finalText) processTranscript();
+    if (finalText) {
+      const newSegment = appendFinalSpeechSegment(finalText);
+      els.speechStatus.textContent = newSegment ? "Procesando pedido..." : "Texto ya capturado.";
+      if (newSegment) processTranscript(newSegment);
+      return;
+    }
+    const preview = normalizeSpeechSegment(interimText);
+    els.speechStatus.textContent = preview ? `Escuchando: ${preview.slice(0, 80)}` : "Escuchando...";
   };
+}
+
+function appendFinalSpeechSegment(segment) {
+  const cleanSegment = normalizeSpeechSegment(segment);
+  if (!cleanSegment) return "";
+  const merged = mergeSpeechText(speechSessionFinalText, cleanSegment);
+  speechSessionFinalText = merged.text;
+  els.transcriptInput.value = [speechSessionBaseText, speechSessionFinalText].filter(Boolean).join(" ").trim();
+  return stripLeadingConjunction(merged.addition);
+}
+
+function mergeSpeechText(existing, incoming) {
+  const current = normalizeSpeechSegment(existing);
+  const segment = normalizeSpeechSegment(incoming);
+  if (!segment) return { text: current, addition: "" };
+  if (!current) return { text: segment, addition: segment };
+
+  const currentKey = speechKey(current);
+  const segmentKey = speechKey(segment);
+  if (currentKey.includes(segmentKey)) return { text: current, addition: "" };
+  if (segmentKey.startsWith(currentKey)) {
+    const addition = segment.slice(current.length).trim();
+    return { text: segment, addition };
+  }
+
+  const currentTokens = current.split(/\s+/);
+  const segmentTokens = segment.split(/\s+/);
+  const currentTokenKeys = currentTokens.map(speechKey);
+  const segmentTokenKeys = segmentTokens.map(speechKey);
+  let overlap = 0;
+  const limit = Math.min(currentTokens.length, segmentTokens.length);
+  for (let size = 1; size <= limit; size += 1) {
+    const left = currentTokenKeys.slice(currentTokenKeys.length - size).join(" ");
+    const right = segmentTokenKeys.slice(0, size).join(" ");
+    if (left === right) overlap = size;
+  }
+
+  const addition = segmentTokens.slice(overlap).join(" ").trim();
+  return {
+    text: [current, addition].filter(Boolean).join(" ").trim(),
+    addition
+  };
+}
+
+function normalizeSpeechSegment(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function speechKey(value) {
+  return normalizeSpeechSegment(value).toLowerCase().replace(/[.,;:]+/g, "");
+}
+
+function stripLeadingConjunction(value) {
+  return normalizeSpeechSegment(value).replace(/^(y|e)\s+/i, "");
 }
 
 function toggleSpeech() {

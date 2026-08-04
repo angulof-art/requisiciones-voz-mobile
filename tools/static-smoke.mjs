@@ -35,6 +35,8 @@ const allText = collectText(root);
 assert.ok(index.includes("Iniciar dictado"));
 assert.ok(index.includes("Responsable del pedido"));
 assert.ok(app.includes("SpeechRecognition") && app.includes("es-CR"));
+assert.ok(app.includes("appendFinalSpeechSegment"));
+assert.equal(app.includes("finalText || interimText"), false);
 assert.ok(app.includes("validateRequisition"));
 assert.ok(sw.includes("requestUrl.origin !== self.location.origin"));
 assert.ok(sql.includes("enable row level security"));

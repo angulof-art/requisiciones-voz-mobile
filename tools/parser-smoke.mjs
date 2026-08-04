@@ -42,6 +42,26 @@ const cases = [
     item: { productName: "Tomate", quantity: 5, unit: "caja", needsReview: false }
   },
   {
+    phrase: "10 lechugas 4 kg de tomate",
+    count: 2,
+    items: [
+      { productName: "Lechuga", quantity: 10, unit: "und", needsReview: false },
+      { productName: "Tomate", quantity: 4, unit: "kg", needsReview: false }
+    ]
+  },
+  {
+    phrase: "diez lechugas y cuatro kilos de tomate",
+    count: 2,
+    items: [
+      { productName: "Lechuga", quantity: 10, unit: "und", needsReview: false },
+      { productName: "Tomate", quantity: 4, unit: "kg", needsReview: false }
+    ]
+  },
+  {
+    phrase: "treinta y cinco unidades de banano",
+    item: { productName: "Banano", quantity: 35, unit: "und", needsReview: false }
+  },
+  {
     phrase: "Quite dos kilos de cebolla",
     command: "remove",
     item: { productName: "Cebolla", quantity: 2, unit: "kg" }

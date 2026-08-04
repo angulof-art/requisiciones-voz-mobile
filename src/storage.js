@@ -58,12 +58,27 @@ export function upsertRequisition(requisition) {
 
 export function loadCatalog() {
   const saved = readJson(STORAGE_KEYS.catalog, null);
-  if (Array.isArray(saved) && saved.length) return normalizeCatalog(saved);
-  return normalizeCatalog(DEFAULT_CATALOG);
+  const seedCatalog = normalizeCatalog(DEFAULT_CATALOG);
+  if (Array.isArray(saved) && saved.length) {
+    return mergeSeedCatalog(seedCatalog, normalizeCatalog(saved));
+  }
+  return seedCatalog;
 }
 
 export function saveCatalog(catalog) {
   writeJson(STORAGE_KEYS.catalog, normalizeCatalog(catalog));
+}
+
+function mergeSeedCatalog(seedCatalog, savedCatalog) {
+  const byKey = new Map(seedCatalog.map((product) => [catalogMergeKey(product), product]));
+  for (const product of savedCatalog) {
+    byKey.set(catalogMergeKey(product), product);
+  }
+  return Array.from(byKey.values());
+}
+
+function catalogMergeKey(product) {
+  return product.code || product.id || product.officialName.toLowerCase();
 }
 
 export function loadRecentNames() {

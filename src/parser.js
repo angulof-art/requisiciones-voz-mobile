@@ -1,7 +1,6 @@
 import {
   displayName,
   findProductMatch,
-  isKnownUnit,
   normalizeText,
   normalizeUnit,
   notesFromRawProduct,
@@ -292,20 +291,37 @@ function splitByProductConjunction(text) {
   const tokens = tokenize(text);
   const chunks = [];
   let current = [];
+  let currentHasQuantity = false;
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     const next = tokens[index + 1];
     const previous = tokens[index - 1];
-    if (
+    const startsAfterConjunction =
       CONJUNCTIONS.has(token) &&
       next &&
       beginsQuantity(tokens.slice(index + 1)) &&
-      !isNumberWord(previous)
-    ) {
+      !isNumberContinuation(previous);
+    const startsImplicitProduct =
+      currentHasQuantity &&
+      beginsQuantity(tokens.slice(index)) &&
+      !isNumberContinuation(previous);
+
+    if (startsAfterConjunction) {
       if (current.length) chunks.push(current.join(" "));
       current = [];
-    } else {
-      current.push(token);
+      currentHasQuantity = false;
+      continue;
+    }
+
+    if (startsImplicitProduct) {
+      if (current.length) chunks.push(current.join(" "));
+      current = [];
+      currentHasQuantity = false;
+    }
+
+    current.push(token);
+    if (beginsQuantity(tokens.slice(index))) {
+      currentHasQuantity = true;
     }
   }
   if (current.length) chunks.push(current.join(" "));
@@ -378,7 +394,7 @@ export function parseQuantityAt(tokens, start) {
       const quantity = parseQuantityWords(words);
       if (Number.isFinite(quantity)) {
         const next = tokens[index + 1];
-        if (!next || isKnownUnit(next) || !isNumberWord(next)) {
+        if (!isNumberContinuation(next)) {
           return { quantity, start, end: index + 1 };
         }
       }
@@ -439,6 +455,10 @@ function parseNumericToken(token) {
 
 function isNumberWord(word) {
   return NUMBER_WORDS.has(word) || TENS.has(word) || HUNDREDS.has(word) || word === "mil";
+}
+
+function isNumberContinuation(word) {
+  return Boolean(word && (word === "y" || DECIMAL_WORDS.has(word) || isNumberWord(word)));
 }
 
 function createLineId() {

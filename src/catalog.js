@@ -76,6 +76,16 @@ export const DEFAULT_CATALOG = [
     active: true
   },
   {
+    id: "prod-veg-003",
+    code: "VEG-003",
+    officialName: "Lechuga",
+    category: "Vegetales",
+    defaultUnit: "und",
+    allowedUnits: ["und", "kg", "caja"],
+    synonyms: ["lechugas", "lechu", "lechuga americana", "lechuga romana"],
+    active: true
+  },
+  {
     id: "prod-veg-002",
     code: "VEG-002",
     officialName: "Cebolla",
