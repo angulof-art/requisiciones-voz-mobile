@@ -1,0 +1,8 @@
+code,official_name,category,default_unit,allowed_units,synonyms,active
+FRU-001,Banano,Frutas,und,"und,kg","bananos,banana,bananas",true
+FRU-002,Sandia,Frutas,kg,"kg,und","sandia,sandias",true
+FRU-003,Papaya,Frutas,kg,"kg,und","papayas,papaya madura",true
+FRU-004,Platano maduro,Frutas,und,"und,kg","platanos maduros,platano,maduros",true
+FRU-005,Melon,Frutas,kg,"kg,und","melones",true
+VEG-001,Tomate,Vegetales,caja,"caja,kg,und","tomates,tomate maduro",true
+VEG-002,Cebolla,Vegetales,kg,"kg,und,bolsa","cebollas,cebolla blanca,cebolla morada",true

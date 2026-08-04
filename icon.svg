@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Pedidos por Voz">
+  <rect width="128" height="128" rx="26" fill="#0f766e"/>
+  <path d="M38 32h52c4.4 0 8 3.6 8 8v56c0 4.4-3.6 8-8 8H38c-4.4 0-8-3.6-8-8V40c0-4.4 3.6-8 8-8Z" fill="#f8fafc"/>
+  <path d="M47 51h34M47 65h34M47 79h22" stroke="#0f766e" stroke-width="7" stroke-linecap="round"/>
+  <path d="M83 90c9 0 16-7 16-16V58c0-9-7-16-16-16s-16 7-16 16v16c0 9 7 16 16 16Z" fill="#14b8a6"/>
+  <path d="M83 96v10M70 106h26" stroke="#083f3b" stroke-width="7" stroke-linecap="round"/>
+</svg>

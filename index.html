@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <meta
+      name="description"
+      content="Aplicacion movil para pedidos y requisiciones por voz."
+    />
+    <title>Pedidos por Voz</title>
+    <link rel="manifest" href="./manifest.webmanifest?v=1" />
+    <link rel="icon" href="./icon.svg?v=1" />
+    <link rel="stylesheet" href="./styles.css?v=1" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Pedidos por voz</p>
+          <h1 id="screenTitle">Nuevo pedido</h1>
+        </div>
+        <button class="status-pill" id="connectionBadge" type="button">Sin conexión</button>
+      </header>
+
+      <main>
+        <section class="screen active" id="screen-new" data-screen="new" aria-labelledby="newTitle">
+          <div class="responsible-block">
+            <label for="requestedBy">Responsable del pedido</label>
+            <input id="requestedBy" list="recentNames" autocomplete="name" placeholder="Nombre y apellido" />
+            <datalist id="recentNames"></datalist>
+            <p class="field-error" id="responsibleError"></p>
+          </div>
+
+          <button class="voice-button" id="voiceButton" type="button" aria-pressed="false">
+            <span id="voicePrimary">Iniciar dictado</span>
+            <small id="voiceSecondary">Presione para hablar</small>
+          </button>
+
+          <div class="transcript-panel">
+            <div class="panel-heading">
+              <h2>Transcripción</h2>
+              <button class="text-action" id="processTranscriptButton" type="button">Procesar texto</button>
+            </div>
+            <textarea
+              id="transcriptInput"
+              rows="4"
+              placeholder="También puede escribir: 30 unidades de banano, 10 kilos de sandía..."
+            ></textarea>
+            <p class="hint" id="speechStatus">Listo para dictar.</p>
+          </div>
+
+          <div class="quick-actions">
+            <button id="saveDraftButton" type="button">Guardar borrador</button>
+            <button class="secondary" id="goReviewButton" type="button">Revisar pedido</button>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-review" data-screen="review" aria-labelledby="reviewTitle">
+          <div class="request-summary">
+            <div>
+              <p class="eyebrow">Requisición</p>
+              <h2 id="requisitionNumber">REQ</h2>
+            </div>
+            <span class="state-badge" id="statusBadge">Borrador</span>
+          </div>
+
+          <div class="toolbar">
+            <button id="addRowButton" type="button">Agregar fila</button>
+            <button class="secondary" id="undoButton" type="button">Deshacer</button>
+            <button class="secondary" id="combineDuplicatesButton" type="button">Combinar repetidos</button>
+          </div>
+
+          <div class="duplicate-banner" id="duplicateBanner" hidden>
+            <p id="duplicateText"></p>
+            <button id="confirmCombineButton" type="button">Combinar</button>
+            <button class="secondary" id="keepDuplicatesButton" type="button">Mantener</button>
+          </div>
+
+          <div class="items-list" id="itemsList"></div>
+          <div class="empty-state" id="itemsEmpty">Agregue productos por voz o manualmente.</div>
+
+          <div class="validation-list" id="validationList"></div>
+
+          <div class="action-stack">
+            <button id="confirmButton" type="button">Confirmar pedido</button>
+            <button class="secondary" id="exportPdfButton" type="button">Generar PDF</button>
+            <button class="secondary" id="exportCsvButton" type="button">Exportar Excel/CSV</button>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-history" data-screen="history" aria-labelledby="historyTitle">
+          <div class="panel-heading">
+            <h2 id="historyTitle">Historial de pedidos</h2>
+            <button id="newOrderButton" type="button">Nuevo</button>
+          </div>
+          <div class="filters">
+            <input id="historySearch" placeholder="Buscar número o responsable" />
+            <select id="historyStatus">
+              <option value="all">Todos</option>
+              <option value="draft">Borrador</option>
+              <option value="review">Pendiente de revisión</option>
+              <option value="confirmed">Confirmado</option>
+              <option value="exported">Exportado</option>
+              <option value="voided">Anulado</option>
+            </select>
+            <input id="historyDate" type="date" />
+          </div>
+          <div class="history-list" id="historyList"></div>
+          <div class="empty-state" id="historyEmpty">No hay pedidos guardados.</div>
+        </section>
+
+        <section class="screen" id="screen-catalog" data-screen="catalog" aria-labelledby="catalogTitle">
+          <div class="panel-heading">
+            <h2 id="catalogTitle">Catálogo de productos</h2>
+            <label class="file-button">
+              Importar catálogo
+              <input id="catalogImport" type="file" accept=".csv,text/csv" />
+            </label>
+          </div>
+          <div class="filters">
+            <input id="catalogSearch" placeholder="Buscar producto, código o sinónimo" />
+            <select id="catalogStatus">
+              <option value="active">Activos</option>
+              <option value="inactive">Inactivos</option>
+              <option value="all">Todos</option>
+            </select>
+          </div>
+          <form class="catalog-form" id="catalogForm">
+            <input id="catalogId" type="hidden" />
+            <div class="form-grid">
+              <label>Código <input id="catalogCode" required /></label>
+              <label>Producto oficial <input id="catalogName" required /></label>
+              <label>Categoría <input id="catalogCategoryInput" /></label>
+              <label>Unidad habitual <select id="catalogDefaultUnit"></select></label>
+              <label>Unidades permitidas <input id="catalogAllowedUnits" placeholder="kg,und,caja" /></label>
+              <label>Sinónimos <input id="catalogSynonyms" placeholder="bananos, banana" /></label>
+            </div>
+            <label class="check-row">
+              <input id="catalogActive" type="checkbox" checked />
+              <span>Producto activo</span>
+            </label>
+            <div class="toolbar">
+              <button type="submit">Guardar producto</button>
+              <button class="secondary" id="resetCatalogForm" type="button">Limpiar</button>
+            </div>
+          </form>
+          <div class="catalog-list" id="catalogList"></div>
+        </section>
+
+        <section class="screen" id="screen-config" data-screen="config" aria-labelledby="configTitle">
+          <h2 id="configTitle">Configuración</h2>
+          <div class="settings-card">
+            <label>Zona horaria <input value="America/Costa_Rica" readonly /></label>
+            <label>Formato de hora
+              <select id="hourFormat">
+                <option value="24">24 horas</option>
+                <option value="12">12 horas</option>
+              </select>
+            </label>
+            <label>Tamaño de texto
+              <select id="textSize">
+                <option value="normal">Normal</option>
+                <option value="large">Grande</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="settings-card">
+            <h3>Supabase</h3>
+            <label>URL del proyecto <input id="supabaseUrl" placeholder="https://proyecto.supabase.co" /></label>
+            <label>Publishable key <input id="supabaseKey" type="password" placeholder="sb_publishable_..." /></label>
+            <label>Workspace <input id="supabaseWorkspace" value="main" /></label>
+            <label class="check-row">
+              <input id="supabaseEnabled" type="checkbox" />
+              <span>Activar sincronización</span>
+            </label>
+            <div class="toolbar">
+              <button id="saveSupabaseButton" type="button">Guardar conexión</button>
+              <button class="secondary" id="syncNowButton" type="button">Sincronizar</button>
+            </div>
+            <p class="hint" id="supabaseMessage">Sin configurar.</p>
+            <pre class="technical" id="supabaseTechnical" hidden></pre>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-sync" data-screen="sync" aria-labelledby="syncTitle">
+          <h2 id="syncTitle">Estado de sincronización</h2>
+          <div class="sync-grid">
+            <div>
+              <span>Conexión</span>
+              <strong id="networkState">Sin conexión</strong>
+            </div>
+            <div>
+              <span>Pedidos locales</span>
+              <strong id="localCount">0</strong>
+            </div>
+            <div>
+              <span>Pendientes</span>
+              <strong id="pendingCount">0</strong>
+            </div>
+            <div>
+              <span>Última sincronización</span>
+              <strong id="lastSync">Nunca</strong>
+            </div>
+          </div>
+          <div class="history-list" id="syncQueueList"></div>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Navegación principal">
+        <button class="active" data-target="new" type="button">Nuevo</button>
+        <button data-target="review" type="button">Revisión</button>
+        <button data-target="history" type="button">Historial</button>
+        <button data-target="catalog" type="button">Catálogo</button>
+        <button data-target="config" type="button">Config</button>
+      </nav>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <script type="module" src="./src/app.js?v=1"></script>
+  </body>
+</html>
