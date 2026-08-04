@@ -143,7 +143,11 @@ export function readJson(key, fallback) {
 }
 
 export function writeJson(key, value) {
-  getStorage()?.setItem(key, JSON.stringify(value));
+  try {
+    getStorage()?.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.warn(`No se pudo guardar ${key} localmente.`, error);
+  }
 }
 
 function removeItem(key) {

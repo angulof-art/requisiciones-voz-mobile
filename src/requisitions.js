@@ -50,7 +50,7 @@ export function normalizeRequisition(requisition) {
     status: requisition.status || "draft",
     originalTranscript: requisition.originalTranscript || requisition.original_transcript || "",
     items: (requisition.items || []).map(normalizeItem),
-    changes: requisition.changes || [],
+    changes: normalizeChanges(requisition.changes || []),
     createdAt: requisition.createdAt || requisition.created_at || now,
     updatedAt: requisition.updatedAt || requisition.updated_at || now,
     confirmedAt: requisition.confirmedAt || requisition.confirmed_at || "",
@@ -84,8 +84,8 @@ export function addChange(requisition, action, previousValue, newValue) {
   requisition.changes.unshift({
     id: createId("chg"),
     action,
-    previousValue: clone(previousValue),
-    newValue: clone(newValue),
+    previousValue: compactChangeValue(previousValue),
+    newValue: compactChangeValue(newValue),
     changedAt: new Date().toISOString(),
     changedBy: requisition.requestedBy || ""
   });
@@ -205,6 +205,57 @@ export function formatDateParts(dateInput, hourFormat = "24") {
 
 export function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeChanges(changes) {
+  return (changes || []).slice(0, 100).map((change) => ({
+    id: change.id || createId("chg"),
+    action: change.action || "cambio",
+    previousValue: compactChangeValue(change.previousValue ?? change.previous_value),
+    newValue: compactChangeValue(change.newValue ?? change.new_value),
+    changedAt: change.changedAt || change.changed_at || new Date().toISOString(),
+    changedBy: change.changedBy || change.changed_by || ""
+  }));
+}
+
+function compactChangeValue(value) {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return value.slice(0, 120).map(compactChangeValue);
+  if (typeof value !== "object") return value;
+
+  if ("productName" in value || "product_name" in value || "quantity" in value) {
+    return compactItemSnapshot(value);
+  }
+
+  if ("requisitionNumber" in value || "requisition_number" in value || "items" in value) {
+    return {
+      id: value.id || "",
+      requisitionNumber: value.requisitionNumber || value.requisition_number || "",
+      requestedBy: value.requestedBy || value.requested_by || "",
+      status: value.status || "",
+      itemCount: Array.isArray(value.items) ? value.items.length : 0,
+      items: Array.isArray(value.items) ? value.items.slice(0, 120).map(compactItemSnapshot) : []
+    };
+  }
+
+  const compact = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "changes" || key === "previousValue" || key === "newValue") continue;
+    compact[key] = compactChangeValue(entry);
+  }
+  return compact;
+}
+
+function compactItemSnapshot(item) {
+  return {
+    id: item.id || "",
+    productCode: item.productCode || item.product_code || "",
+    productName: item.productName || item.product_name || "",
+    quantity: item.quantity ?? null,
+    unit: item.unit || "",
+    notes: item.notes || "",
+    needsReview: Boolean(item.needsReview || item.needs_review)
+  };
 }
 
 export function roundQuantity(value) {

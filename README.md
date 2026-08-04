@@ -14,7 +14,8 @@ Aplicacion web movil para crear pedidos o requisiciones por voz.
 - Numeracion diaria tipo `REQ-20260803-0001`.
 - Historial con busqueda, filtros, duplicado y reapertura de borradores.
 - Catalogo importable por CSV.
-- Exportacion PDF imprimible y CSV compatible con Excel/Google Sheets.
+- Exportacion PDF imprimible y Excel `.xlsx` con columnas estilo inventario.
+- CSV compatible con Google Sheets disponible desde el modulo de exportacion.
 - PWA offline con indicador de conexion y cola de sincronizacion.
 - Migracion SQL para Supabase.
 

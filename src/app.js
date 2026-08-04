@@ -4,7 +4,7 @@ import {
   parseList,
   unitOptions
 } from "./catalog.js";
-import { downloadCsv, printPdf } from "./exporters.js";
+import { downloadExcel, printPdf } from "./exporters.js";
 import { parseRequisitionText } from "./parser.js";
 import {
   STATUS,
@@ -373,10 +373,10 @@ function exportPdf() {
 
 function exportCsv() {
   if (!validateBeforeExport()) return;
-  downloadCsv(state.current, state.settings.hourFormat);
+  downloadExcel(state.current, state.catalog, state.settings.hourFormat);
   markExported(state.current);
   saveOrderAndQueue();
-  toast("Archivo Excel/CSV generado.");
+  toast("Archivo Excel generado.");
   render();
 }
 

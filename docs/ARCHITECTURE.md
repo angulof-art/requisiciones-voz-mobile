@@ -12,7 +12,7 @@ externos, pruebas con Node y migraciones SQL separadas.
 - `src/catalog.js`: catalogo maestro, unidades y coincidencias.
 - `src/requisitions.js`: pedidos, validaciones, numeracion y cambios.
 - `src/storage.js`: persistencia local y cola de sincronizacion.
-- `src/exporters.js`: PDF imprimible y CSV compatible con Excel/Google Sheets.
+- `src/exporters.js`: PDF imprimible, Excel `.xlsx` y CSV compatible con Google Sheets.
 - `src/supabase.js`: REST seguro con publishable key, sin secretos.
 - `src/app.js`: UI, voz, edicion, historial, catalogo y configuracion.
 
@@ -23,7 +23,7 @@ o sincronizacion cuando se configure Auth y se aplique la migracion SQL.
 
 ## Supuestos
 
-- La primera version exporta CSV compatible con Excel y Google Sheets.
+- La primera version exporta Excel `.xlsx` real para Excel y conserva CSV para Google Sheets.
 - El PDF se genera como vista imprimible del navegador.
 - La integracion directa con Google Sheets queda para una version con OAuth.
 - Las ordenes avanzadas de voz se detectan, pero no modifican datos sin revision.

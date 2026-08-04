@@ -28,6 +28,7 @@ for (const file of required) {
 
 const index = readFileSync(join(root, "index.html"), "utf8");
 const app = readFileSync(join(root, "src/app.js"), "utf8");
+const exporters = readFileSync(join(root, "src/exporters.js"), "utf8");
 const sw = readFileSync(join(root, "service-worker.js"), "utf8");
 const sql = readFileSync(join(root, "supabase/migrations/202608030001_requisitions.sql"), "utf8");
 const allText = collectText(root);
@@ -38,6 +39,10 @@ assert.ok(app.includes("SpeechRecognition") && app.includes("es-CR"));
 assert.ok(app.includes("appendFinalSpeechSegment"));
 assert.equal(app.includes("finalText || interimText"), false);
 assert.ok(app.includes("validateRequisition"));
+assert.ok(app.includes("downloadExcel"));
+assert.ok(exporters.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+assert.ok(exporters.includes("autoFilter"));
+assert.equal(exporters.includes("noopener"), false);
 assert.ok(sw.includes("requestUrl.origin !== self.location.origin"));
 assert.ok(sql.includes("enable row level security"));
 assert.ok(sql.includes("requisitions"));
