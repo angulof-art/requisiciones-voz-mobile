@@ -55,10 +55,12 @@ code,official_name,category,default_unit,allowed_units,synonyms,active
 ## Supabase
 
 1. Ejecuta `supabase/migrations/202608030001_requisitions.sql`.
-2. Usa solo la URL del proyecto y una publishable key.
-3. No uses `service_role`, `sb_secret_` ni credenciales privadas.
-4. Para produccion, configura Supabase Auth; las politicas RLS activas son para
-   usuarios autenticados.
+2. Para una prueba funcional sin login, ejecuta tambien
+   `supabase/migrations/202608030002_dev_anon_requisitions.sql`.
+3. Usa solo la URL del proyecto y una publishable key.
+4. No uses `service_role`, `sb_secret_` ni credenciales privadas.
+5. Para produccion, configura Supabase Auth y retira la migracion `dev_anon`.
+   Esa segunda migracion es para demo/piloto, no para datos sensibles.
 
 ## Despliegue
 
