@@ -685,7 +685,17 @@ async function performSupabaseSync(silent = false) {
   try {
     if (!silent) renderSupabaseMessage("Sincronizando...");
     await testSupabase(state.settings.supabase);
-    await syncAllToSupabase(state.settings.supabase, state.requisitions, state.catalog);
+    const syncResult = await syncAllToSupabase(
+      state.settings.supabase,
+      state.requisitions,
+      state.catalog
+    );
+    if (syncResult.renames.length) {
+      const currentRename = syncResult.renames.find((rename) => rename.id === state.current.id);
+      if (currentRename) state.current.requisitionNumber = currentRename.requisitionNumber;
+      saveRequisitions(state.requisitions);
+      persistCurrent();
+    }
     state.settings.supabase.lastSyncAt = new Date().toISOString();
     state.syncQueue = [];
     saveSyncQueue([]);
@@ -693,7 +703,12 @@ async function performSupabaseSync(silent = false) {
     supabaseConnectionState = "connected";
     els.autosaveState.textContent = "Sincronizado";
     els.autosaveState.classList.add("synced");
-    renderSupabaseMessage("Sincronizado con Supabase.");
+    const adjustedNumber = syncResult.renames.at(-1)?.requisitionNumber;
+    renderSupabaseMessage(
+      adjustedNumber
+        ? `Sincronizado. Número ajustado automáticamente: ${adjustedNumber}.`
+        : "Sincronizado con Supabase."
+    );
     render();
   } catch (error) {
     supabaseConnectionState = "error";
@@ -1064,7 +1079,7 @@ function toast(message) {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("./service-worker.js?v=5").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=6").catch(() => {});
   }
 }
 

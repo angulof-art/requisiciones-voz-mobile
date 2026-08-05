@@ -16,6 +16,10 @@ import {
   validateRequisitionItem
 } from "../src/requisitions.js";
 import { loadCatalog, STORAGE_KEYS } from "../src/storage.js";
+import {
+  makeConflictSafeRequisitionNumber,
+  syncRequisitionToSupabase
+} from "../src/supabase.js";
 
 const catalog = normalizeCatalog(DEFAULT_CATALOG);
 const requisition = createRequisition([], new Date("2026-08-03T15:20:00-06:00"));
@@ -90,5 +94,48 @@ storage.set(
   JSON.stringify(catalog.filter((product) => product.code !== "VEG-003"))
 );
 assert.ok(loadCatalog().some((product) => product.code === "VEG-003"));
+
+const conflictRequisition = createRequisition([], new Date("2026-08-04T09:15:00-06:00"));
+conflictRequisition.requisitionNumber = "REQ-20260804-0001";
+conflictRequisition.requestedBy = "Prueba Supabase";
+const deterministicConflictNumber = makeConflictSafeRequisitionNumber(
+  conflictRequisition,
+  new Date("2026-08-04T15:16:17.000Z")
+);
+assert.match(deterministicConflictNumber, /^REQ-20260804-151617-[A-Z0-9]{6}$/);
+
+const originalFetch = globalThis.fetch;
+const requests = [];
+globalThis.fetch = async (url, options = {}) => {
+  requests.push({ url: String(url), options });
+  if (options.method === "GET" || !options.method) {
+    return new Response(
+      JSON.stringify([{ id: "req-remota", requisition_number: "REQ-20260804-0001" }]),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  return new Response(null, { status: 204 });
+};
+const conflictResult = await syncRequisitionToSupabase(
+  {
+    enabled: true,
+    url: "https://example.supabase.co",
+    publishableKey: "sb_publishable_test",
+    workspaceId: "main"
+  },
+  conflictRequisition,
+  []
+);
+globalThis.fetch = originalFetch;
+assert.ok(conflictResult.rename);
+assert.notEqual(conflictRequisition.requisitionNumber, "REQ-20260804-0001");
+assert.equal(conflictResult.rename.requisitionNumber, conflictRequisition.requisitionNumber);
+assert.ok(
+  requests.some(
+    (request) =>
+      request.options.method === "POST" &&
+      String(request.options.body).includes(conflictRequisition.requisitionNumber)
+  )
+);
 
 console.log("Integration smoke OK");

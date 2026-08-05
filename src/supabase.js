@@ -69,7 +69,7 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog) 
   if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
   const workspaceId = settings.workspaceId || "main";
   await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
-  await upsertRows(settings, "requisitions", [requisitionToRow(requisition, workspaceId)]);
+  const rename = await upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId);
   await supabaseRequest(settings, "requisition_items", {
     method: "DELETE",
     query: `requisition_id=eq.${encodeURIComponent(requisition.id)}`,
@@ -87,12 +87,104 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog) 
       requisition.changes.map((change) => changeToRow(change, requisition.id, workspaceId))
     );
   }
+  return { rename };
 }
 
 export async function syncAllToSupabase(settings, requisitions, catalog) {
+  const renames = [];
   for (const requisition of requisitions) {
-    await syncRequisitionToSupabase(settings, requisition, catalog);
+    const result = await syncRequisitionToSupabase(settings, requisition, catalog);
+    if (result.rename) renames.push(result.rename);
   }
+  return { renames };
+}
+
+export function makeConflictSafeRequisitionNumber(requisition, now = new Date(), attempt = 0) {
+  const current = String(requisition.requisitionNumber || "");
+  const datePart = current.match(/^REQ-(\d{8})/)?.[1] || compactUtcDate(now);
+  const timePart = now.toISOString().slice(11, 19).replace(/:/g, "");
+  const idPart = String(requisition.id || "")
+    .replace(/[^a-z0-9]/gi, "")
+    .slice(-6)
+    .toUpperCase()
+    .padStart(6, "0");
+  const retryPart = attempt ? `-${attempt}` : "";
+  return `REQ-${datePart}-${timePart}-${idPart}${retryPart}`;
+}
+
+async function upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId) {
+  let rename = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const owner = await findRequisitionNumberOwner(
+      settings,
+      workspaceId,
+      requisition.requisitionNumber
+    );
+    if (owner && owner.id !== requisition.id) {
+      rename = renameRequisitionAfterConflict(requisition, rename, attempt);
+    }
+
+    try {
+      await upsertRows(settings, "requisitions", [requisitionToRow(requisition, workspaceId)]);
+      return rename;
+    } catch (error) {
+      if (!isDuplicateRequisitionNumberError(error) || attempt === 3) throw error;
+      rename = renameRequisitionAfterConflict(requisition, rename, attempt + 1);
+    }
+  }
+  return rename;
+}
+
+async function findRequisitionNumberOwner(settings, workspaceId, requisitionNumber) {
+  const rows = await supabaseRequest(settings, "requisitions", {
+    query: [
+      "select=id,requisition_number",
+      `workspace_id=eq.${encodeURIComponent(workspaceId)}`,
+      `requisition_number=eq.${encodeURIComponent(requisitionNumber)}`,
+      "limit=1"
+    ].join("&")
+  });
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+function renameRequisitionAfterConflict(requisition, existingRename, attempt) {
+  const previousNumber = requisition.requisitionNumber;
+  const nextNumber = makeConflictSafeRequisitionNumber(requisition, new Date(), attempt);
+  requisition.requisitionNumber = nextNumber;
+  requisition.updatedAt = new Date().toISOString();
+  requisition.changes = requisition.changes || [];
+  requisition.changes.unshift({
+    id: createSyncChangeId(),
+    action: "numero_ajustado_por_sincronizacion",
+    previousValue: { requisitionNumber: previousNumber },
+    newValue: { requisitionNumber: nextNumber },
+    changedAt: requisition.updatedAt,
+    changedBy: requisition.requestedBy || ""
+  });
+  requisition.changes = requisition.changes.slice(0, 100);
+  return {
+    id: requisition.id,
+    previousNumber: existingRename?.previousNumber || previousNumber,
+    requisitionNumber: nextNumber
+  };
+}
+
+function isDuplicateRequisitionNumberError(error) {
+  const technical = String(error?.technical || error?.message || "").toLowerCase();
+  return (
+    technical.includes("23505") &&
+    (technical.includes("requisition_number") ||
+      technical.includes("requisitions_workspace_id_requisition_number_key"))
+  );
+}
+
+function compactUtcDate(date) {
+  return date.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+function createSyncChangeId() {
+  if (globalThis.crypto?.randomUUID) return `chg-${globalThis.crypto.randomUUID()}`;
+  return `chg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 async function upsertRows(settings, table, rows) {
