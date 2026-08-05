@@ -1,4 +1,4 @@
-import { productAllowsUnit } from "./catalog.js?v=7";
+import { productAllowsUnit } from "./catalog.js?v=8";
 
 export const STATUS = {
   draft: "Borrador",

@@ -1,6 +1,6 @@
-import { DEFAULT_CATALOG, normalizeCatalog } from "./catalog.js?v=7";
-import { PUBLIC_APP_CONFIG } from "./config.js?v=7";
-import { createRequisition, normalizeRequisition } from "./requisitions.js?v=7";
+import { DEFAULT_CATALOG, normalizeCatalog, normalizeText } from "./catalog.js?v=8";
+import { PUBLIC_APP_CONFIG } from "./config.js?v=8";
+import { createRequisition, normalizeRequisition } from "./requisitions.js?v=8";
 
 export const STORAGE_KEYS = {
   requisitions: "requisiciones-voz:requisitions:v1",
@@ -72,7 +72,11 @@ export function saveCatalog(catalog) {
 
 function mergeSeedCatalog(seedCatalog, savedCatalog) {
   const byKey = new Map(seedCatalog.map((product) => [catalogMergeKey(product), product]));
+  const seedIds = new Set(seedCatalog.map((product) => product.id));
+  const seedNames = new Set(seedCatalog.map((product) => normalizeText(product.officialName)));
   for (const product of savedCatalog) {
+    if (byKey.has(catalogMergeKey(product)) || seedIds.has(product.id)) continue;
+    if (seedNames.has(normalizeText(product.officialName))) continue;
     byKey.set(catalogMergeKey(product), product);
   }
   return Array.from(byKey.values());

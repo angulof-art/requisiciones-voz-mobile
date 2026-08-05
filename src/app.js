@@ -3,9 +3,9 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=7";
-import { downloadExcel, printPdf } from "./exporters.js?v=7";
-import { parseRequisitionText } from "./parser.js?v=7";
+} from "./catalog.js?v=8";
+import { downloadExcel, printPdf } from "./exporters.js?v=8";
+import { parseRequisitionText } from "./parser.js?v=8";
 import {
   STATUS,
   addChange,
@@ -21,7 +21,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=7";
+} from "./requisitions.js?v=8";
 import {
   clearCurrentRequisition,
   loadAppState,
@@ -33,7 +33,7 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=7";
+} from "./storage.js?v=8";
 import {
   classifySupabaseError,
   isSupabaseReady,
@@ -41,7 +41,7 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=7";
+} from "./supabase.js?v=8";
 
 const state = loadAppState();
 const undoStack = [];
@@ -1079,7 +1079,7 @@ function toast(message) {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("./service-worker.js?v=7").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=8").catch(() => {});
   }
 }
 

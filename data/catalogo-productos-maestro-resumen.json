@@ -1,0 +1,53 @@
+{
+  "products": 327,
+  "duplicatesMerged": [
+    {
+      "kept": "Vol au vent",
+      "merged": "Vol au vent"
+    },
+    {
+      "kept": "Mini croissant",
+      "merged": "Mini croissant"
+    },
+    {
+      "kept": "Chile en escamas",
+      "merged": "Chile en escamas"
+    },
+    {
+      "kept": "Bocadillo de papa y carne",
+      "merged": "Bocadillo de papa y carne"
+    },
+    {
+      "kept": "Aceite de oliva extra virgen",
+      "merged": "Aceite de oliva extra virgen"
+    },
+    {
+      "kept": "Bocadillo de palmito",
+      "merged": "Bocadillo de palmito"
+    },
+    {
+      "kept": "Tartaletas",
+      "merged": "Tartaletas"
+    },
+    {
+      "kept": "Hierbas de Provenza",
+      "merged": "Hierbas de Provenza"
+    },
+    {
+      "kept": "Pasta wasabi",
+      "merged": "Pasta wasabi"
+    },
+    {
+      "kept": "Galleta chispas de chocolate C1/100",
+      "merged": "Galleta chispas de chocolate C1/100"
+    },
+    {
+      "kept": "Queso mozzarella rebanado",
+      "merged": "Queso mozzarella rebanado"
+    },
+    {
+      "kept": "Bocadillo de strudel de manzana",
+      "merged": "Bocadillo de strudel de manzana"
+    }
+  ]
+}

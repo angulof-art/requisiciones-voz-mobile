@@ -1,3 +1,5 @@
+import { MASTER_CATALOG } from "./catalog-data.js?v=8";
+
 export const UNIT_DEFINITIONS = [
   { canonical: "kg", aliases: ["kg", "kilo", "kilos", "kilogramo", "kilogramos"] },
   { canonical: "g", aliases: ["g", "gr", "gramo", "gramos"] },
@@ -11,121 +13,22 @@ export const UNIT_DEFINITIONS = [
   { canonical: "galón", aliases: ["galon", "galones", "galón", "galónes"] },
   { canonical: "bandeja", aliases: ["bandeja", "bandejas"] },
   { canonical: "mano", aliases: ["mano", "manos"] },
-  { canonical: "docena", aliases: ["docena", "docenas"] }
+  { canonical: "docena", aliases: ["docena", "docenas"] },
+  { canonical: "rollo", aliases: ["rollo", "rollos"] },
+  { canonical: "tamuga", aliases: ["tamuga", "tamugas"] },
+  { canonical: "cápsula", aliases: ["capsula", "capsulas", "cápsula", "cápsulas"] },
+  { canonical: "lata", aliases: ["lata", "latas"] },
+  { canonical: "cubeta", aliases: ["cubeta", "cubetas"] },
+  { canonical: "pichinga", aliases: ["pichinga", "pichingas"] },
+  { canonical: "bulto", aliases: ["bulto", "bultos"] },
+  { canonical: "frasco", aliases: ["frasco", "frascos"] },
+  { canonical: "envase", aliases: ["envase", "envases", "env"] },
+  { canonical: "garrafa", aliases: ["garrafa", "garrafas", "gar"] },
+  { canonical: "empaque", aliases: ["empaque", "empaques", "emp"] },
+  { canonical: "bloque", aliases: ["bloque", "bloques", "block"] }
 ];
 
-export const DEFAULT_CATALOG = [
-  {
-    id: "prod-fru-001",
-    code: "FRU-001",
-    officialName: "Banano",
-    category: "Frutas",
-    defaultUnit: "und",
-    allowedUnits: ["und", "kg"],
-    synonyms: ["bananos", "banana", "bananas"],
-    active: true
-  },
-  {
-    id: "prod-fru-002",
-    code: "FRU-002",
-    officialName: "Sandía",
-    category: "Frutas",
-    defaultUnit: "kg",
-    allowedUnits: ["kg", "und"],
-    synonyms: ["sandia", "sandias", "sandías"],
-    active: true
-  },
-  {
-    id: "prod-fru-003",
-    code: "FRU-003",
-    officialName: "Papaya",
-    category: "Frutas",
-    defaultUnit: "kg",
-    allowedUnits: ["kg", "und"],
-    synonyms: ["papayas", "papaya madura"],
-    active: true
-  },
-  {
-    id: "prod-fru-004",
-    code: "FRU-004",
-    officialName: "Plátano maduro",
-    category: "Frutas",
-    defaultUnit: "und",
-    allowedUnits: ["und", "kg"],
-    synonyms: ["platanos maduros", "plátanos maduros", "platano", "plátano", "maduros"],
-    active: true
-  },
-  {
-    id: "prod-fru-005",
-    code: "FRU-005",
-    officialName: "Melón",
-    category: "Frutas",
-    defaultUnit: "kg",
-    allowedUnits: ["kg", "und"],
-    synonyms: ["melon", "melones"],
-    active: true
-  },
-  {
-    id: "prod-veg-001",
-    code: "VEG-001",
-    officialName: "Tomate",
-    category: "Vegetales",
-    defaultUnit: "caja",
-    allowedUnits: ["caja", "kg", "und"],
-    synonyms: ["tomates", "tomate maduro"],
-    active: true
-  },
-  {
-    id: "prod-veg-003",
-    code: "VEG-003",
-    officialName: "Lechuga",
-    category: "Vegetales",
-    defaultUnit: "und",
-    allowedUnits: ["und", "kg", "caja"],
-    synonyms: ["lechugas", "lechu", "lechuga americana", "lechuga romana"],
-    active: true
-  },
-  {
-    id: "prod-veg-002",
-    code: "VEG-002",
-    officialName: "Cebolla",
-    category: "Vegetales",
-    defaultUnit: "kg",
-    allowedUnits: ["kg", "und", "bolsa"],
-    synonyms: ["cebollas", "cebolla blanca", "cebolla morada"],
-    active: true
-  },
-  {
-    id: "prod-aba-001",
-    code: "ABA-001",
-    officialName: "Leche",
-    category: "Abarrotes",
-    defaultUnit: "caja",
-    allowedUnits: ["caja", "L", "botella", "paquete"],
-    synonyms: ["leches", "caja de leche", "cajas de leche"],
-    active: true
-  },
-  {
-    id: "prod-aba-002",
-    code: "ABA-002",
-    officialName: "Azúcar",
-    category: "Abarrotes",
-    defaultUnit: "kg",
-    allowedUnits: ["kg", "g", "bolsa", "paquete"],
-    synonyms: ["azucar", "azúcares", "azucares"],
-    active: true
-  },
-  {
-    id: "prod-aba-003",
-    code: "ABA-003",
-    officialName: "Arroz",
-    category: "Abarrotes",
-    defaultUnit: "paquete",
-    allowedUnits: ["paquete", "kg", "g", "bolsa"],
-    synonyms: ["arroces", "paquete de arroz", "paquetes de arroz"],
-    active: true
-  }
-];
+export const DEFAULT_CATALOG = MASTER_CATALOG;
 
 export function normalizeText(value) {
   return String(value || "")

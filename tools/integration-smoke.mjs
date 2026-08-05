@@ -18,10 +18,22 @@ import {
 import { loadCatalog, STORAGE_KEYS } from "../src/storage.js";
 import {
   makeConflictSafeRequisitionNumber,
+  syncAllToSupabase,
   syncRequisitionToSupabase
 } from "../src/supabase.js";
 
 const catalog = normalizeCatalog(DEFAULT_CATALOG);
+assert.equal(catalog.length, 327);
+assert.equal(new Set(catalog.map((product) => product.id)).size, catalog.length);
+assert.equal(new Set(catalog.map((product) => product.code)).size, catalog.length);
+assert.equal(
+  new Set(catalog.map((product) => product.officialName.toLocaleLowerCase("es"))).size,
+  catalog.length
+);
+assert.ok(catalog.some((product) => product.officialName === "Filete de Pechuga de Pollo Fresco"));
+assert.ok(catalog.some((product) => product.officialName === "Queso mozzarella rebanado"));
+assert.equal(catalog.filter((product) => product.officialName === "Pasta wasabi").length, 1);
+assert.equal(catalog.filter((product) => product.officialName === "Vol au vent").length, 1);
 const requisition = createRequisition([], new Date("2026-08-03T15:20:00-06:00"));
 requisition.requestedBy = "Chef Prueba";
 const parsed = parseRequisitionText("30 unidades de banano, 10 kilos de sandía", catalog);
@@ -94,6 +106,7 @@ storage.set(
   JSON.stringify(catalog.filter((product) => product.code !== "VEG-003"))
 );
 assert.ok(loadCatalog().some((product) => product.code === "VEG-003"));
+assert.equal(loadCatalog().length, 327);
 
 const conflictRequisition = createRequisition([], new Date("2026-08-04T09:15:00-06:00"));
 conflictRequisition.requisitionNumber = "REQ-20260804-0001";
@@ -136,6 +149,33 @@ assert.ok(
       request.options.method === "POST" &&
       String(request.options.body).includes(conflictRequisition.requisitionNumber)
   )
+);
+
+const batchRequests = [];
+globalThis.fetch = async (url, options = {}) => {
+  batchRequests.push({ url: String(url), options });
+  if (options.method === "GET" || !options.method) {
+    const body = String(url).includes("requisition_number=eq.") ? "[]" : "[]";
+    return new Response(body, { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  return new Response(null, { status: 204 });
+};
+await syncAllToSupabase(
+  {
+    enabled: true,
+    url: "https://example.supabase.co",
+    publishableKey: "sb_publishable_test",
+    workspaceId: "main"
+  },
+  [createRequisition([]), createRequisition([])],
+  catalog.slice(0, 3)
+);
+globalThis.fetch = originalFetch;
+assert.equal(
+  batchRequests.filter(
+    (request) => request.options.method === "POST" && request.url.includes("/products?")
+  ).length,
+  1
 );
 
 console.log("Integration smoke OK");

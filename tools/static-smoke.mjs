@@ -12,11 +12,15 @@ const required = [
   "src/config.js",
   "src/parser.js",
   "src/catalog.js",
+  "src/catalog-data.js",
   "src/requisitions.js",
   "src/storage.js",
   "src/exporters.js",
   "src/supabase.js",
   "supabase/migrations/202608030001_requisitions.sql",
+  "supabase/migrations/202608040003_seed_master_catalog.sql",
+  "data/catalogo-productos-maestro.csv",
+  "data/catalogo-productos-maestro-resumen.json",
   "data/catalogo-productos-ejemplo.csv",
   "data/plantilla-catalogo.csv",
   "README.md",
@@ -54,8 +58,9 @@ assert.ok(exporters.includes("autoFilter"));
 assert.ok(exporters.includes('"Unidad de compra"'));
 assert.equal(exporters.includes("noopener"), false);
 assert.ok(sw.includes("requestUrl.origin !== self.location.origin"));
-assert.ok(sw.includes('APP_VERSION = "v7"'));
-assert.ok(app.includes('from "./supabase.js?v=7"'));
+assert.ok(sw.includes('APP_VERSION = "v8"'));
+assert.ok(app.includes('from "./supabase.js?v=8"'));
+assert.ok(sw.includes("catalog-data.js"));
 assert.ok(sql.includes("enable row level security"));
 assert.ok(sql.includes("requisitions"));
 assert.equal(/sb_secret_[A-Za-z0-9_-]+|service_role\s*[:=]\s*[A-Za-z0-9_-]+/.test(allText), false);

@@ -91,9 +91,12 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog) 
 }
 
 export async function syncAllToSupabase(settings, requisitions, catalog) {
+  if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
+  const workspaceId = settings.workspaceId || "main";
+  await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
   const renames = [];
   for (const requisition of requisitions) {
-    const result = await syncRequisitionToSupabase(settings, requisition, catalog);
+    const result = await syncRequisitionToSupabase(settings, requisition, []);
     if (result.rename) renames.push(result.rename);
   }
   return { renames };

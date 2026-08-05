@@ -15,6 +15,8 @@ Aplicacion web movil para crear pedidos o requisiciones por voz.
 - Numeracion diaria tipo `REQ-20260803-0001`.
 - Historial con busqueda, filtros, duplicado y reapertura de borradores.
 - Catalogo importable por CSV.
+- Catalogo maestro inicial de 327 productos habituales del restaurante, sin
+  nombres ni codigos duplicados y con sinonimos para reconocimiento de voz.
 - Exportacion PDF imprimible y Excel `.xlsx` con `Producto`, `Cantidad` y
   `Unidad de compra`.
 - CSV compatible con Google Sheets disponible desde el modulo de exportacion.
@@ -53,6 +55,26 @@ La plantilla esta en `data/plantilla-catalogo.csv`. En la app entra a
 
 ```text
 code,official_name,category,default_unit,allowed_units,synonyms,active
+```
+
+El catalogo maestro listo para importar esta en
+`data/catalogo-productos-maestro.csv`. Incluye frutas y vegetales, proteinas,
+refrigerados, congelados y abarrotes. La fuente JavaScript utilizada por la app
+se genera en `src/catalog-data.js`, y la carga equivalente para Supabase esta
+en `supabase/migrations/202608040003_seed_master_catalog.sql`.
+
+Para regenerarlo desde dos archivos tabulados con la misma estructura de las
+fuentes originales:
+
+```powershell
+node tools/generate-master-catalog.mjs frutas.tsv restaurante.tsv
+```
+
+Con la URL y la publishable key configuradas en `src/config.js`, el catalogo se
+puede volver a sincronizar de forma idempotente con:
+
+```powershell
+pnpm run catalog:sync
 ```
 
 ## Supabase

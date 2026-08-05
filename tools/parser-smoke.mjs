@@ -15,23 +15,23 @@ const cases = [
   },
   {
     phrase: "10 kilos de sandía",
-    item: { productName: "Sandía", quantity: 10, unit: "kg", needsReview: false }
+    item: { productName: "Sandía negra", quantity: 10, unit: "kg", needsReview: false }
   },
   {
     phrase: "Sandía, diez kilos",
-    item: { productName: "Sandía", quantity: 10, unit: "kg", needsReview: false }
+    item: { productName: "Sandía negra", quantity: 10, unit: "kg", needsReview: false }
   },
   {
     phrase: "20 kg de papaya y 30 kg de melón",
     count: 2,
     items: [
-      { productName: "Papaya", quantity: 20, unit: "kg" },
+      { productName: "Papaya madura", quantity: 20, unit: "kg" },
       { productName: "Melón", quantity: 30, unit: "kg" }
     ]
   },
   {
     phrase: "14 unidades de papaya",
-    item: { productName: "Papaya", quantity: 14, unit: "und", needsReview: false }
+    item: { productName: "Papaya madura", quantity: 14, unit: "und", needsReview: false }
   },
   {
     phrase: "50 plátanos maduros",
@@ -71,6 +71,44 @@ const cases = [
     item: { productName: "Banano", quantity: 35, unit: "und", needsReview: false }
   },
   {
+    phrase: "10 kilos de pechuga de pollo",
+    item: {
+      productName: "Filete de Pechuga de Pollo Fresco",
+      quantity: 10,
+      unit: "kg",
+      needsReview: false
+    }
+  },
+  {
+    phrase: "6 kilos de carne molida",
+    item: { productName: "Carne Molida", quantity: 6, unit: "kg", needsReview: false }
+  },
+  {
+    phrase: "3 rollos de cebollín",
+    item: { productName: "Cebollín", quantity: 3, unit: "rollo", needsReview: false }
+  },
+  {
+    phrase: "2 tamugas de culantro coyote",
+    item: { productName: "Culantro coyote", quantity: 2, unit: "tamuga", needsReview: false }
+  },
+  {
+    phrase: "4 paquetes de queso mozzarella rebanado",
+    item: {
+      productName: "Queso mozzarella rebanado",
+      quantity: 4,
+      unit: "paquete",
+      needsReview: false
+    }
+  },
+  {
+    phrase: "5 unidades de pasta wasabi y 8 unidades de volován",
+    count: 2,
+    items: [
+      { productName: "Pasta wasabi", quantity: 5, unit: "und", needsReview: false },
+      { productName: "Vol au vent", quantity: 8, unit: "und", needsReview: false }
+    ]
+  },
+  {
     phrase: "Quite dos kilos de cebolla",
     command: "remove",
     item: { productName: "Cebolla", quantity: 2, unit: "kg" }
@@ -78,7 +116,7 @@ const cases = [
   {
     phrase: "Cambie la papaya de 10 a 15 kilos",
     command: "change",
-    item: { productName: "Papaya", quantity: 15, unit: "kg" }
+    item: { productName: "Papaya madura", quantity: 15, unit: "kg" }
   },
   {
     phrase: "Borre el último producto",
@@ -115,8 +153,8 @@ const multi = parseRequisitionText(
   catalog
 );
 assert.equal(multi.items.length, 3);
-assert.equal(multi.items[2].productName, "Papaya");
-assert.equal(multi.items[2].notes, "madura");
+assert.equal(multi.items[2].productName, "Papaya madura");
+assert.equal(multi.items[2].notes, "");
 
 console.log("Parser smoke OK");
 
