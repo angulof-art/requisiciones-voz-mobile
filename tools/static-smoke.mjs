@@ -45,6 +45,8 @@ assert.ok(app.includes("validateRequisition"));
 assert.ok(app.includes("downloadExcel"));
 assert.ok(app.includes("autoSaveOrder"));
 assert.ok(app.includes("verifySupabaseConnection"));
+assert.ok(app.includes("accept-review"));
+assert.ok(app.includes("Aceptar línea"));
 assert.ok(exporters.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
 assert.ok(exporters.includes("autoFilter"));
 assert.ok(exporters.includes('"Unidad de compra"'));

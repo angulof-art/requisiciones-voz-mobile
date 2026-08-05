@@ -111,11 +111,7 @@ export function validateRequisition(requisition, catalog = [], mode = "confirm")
 
   requisition.items?.forEach((item, index) => {
     const label = item.productName || `Linea ${index + 1}`;
-    if (!item.productName) errors.push(`${label}: falta el producto.`);
-    if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) {
-      errors.push(`${label}: la cantidad debe ser mayor que cero.`);
-    }
-    if (!item.unit) errors.push(`${label}: falta la unidad.`);
+    errors.push(...validateRequisitionItem(item, index));
     if (item.needsReview && mode !== "draft") {
       errors.push(`${label}: necesita revisión antes de confirmar o exportar.`);
     }
@@ -126,6 +122,17 @@ export function validateRequisition(requisition, catalog = [], mode = "confirm")
   });
 
   return { ok: errors.length === 0, errors, fieldErrors };
+}
+
+export function validateRequisitionItem(item, index = 0) {
+  const errors = [];
+  const label = String(item?.productName || "").trim() || `Linea ${index + 1}`;
+  if (!String(item?.productName || "").trim()) errors.push(`${label}: falta el producto.`);
+  if (!Number.isFinite(Number(item?.quantity)) || Number(item.quantity) <= 0) {
+    errors.push(`${label}: la cantidad debe ser mayor que cero.`);
+  }
+  if (!String(item?.unit || "").trim()) errors.push(`${label}: falta la unidad.`);
+  return errors;
 }
 
 export function findDuplicateGroups(items) {

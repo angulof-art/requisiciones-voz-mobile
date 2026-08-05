@@ -19,7 +19,8 @@ import {
   markExported,
   markVoided,
   normalizeItem,
-  validateRequisition
+  validateRequisition,
+  validateRequisitionItem
 } from "./requisitions.js";
 import {
   clearCurrentRequisition,
@@ -282,13 +283,16 @@ function handleItemEdit(event) {
   if (field === "quantity") item.quantity = Number(input.value);
   else if (field === "needsReview" || field === "unitOverride") item[field] = input.checked;
   else item[field] = input.value;
-  if (field === "productName" && input.value.trim()) item.needsReview = false;
+  if (field === "productName") item.needsReview = true;
   if (field === "unit") item.unitAllowed = true;
   item.confidence = item.needsReview ? Math.min(item.confidence || 0, 69) : Math.max(item.confidence || 85, 85);
   state.current.updatedAt = new Date().toISOString();
   persistCurrent();
   renderSummary();
+  renderValidation({ ok: true, errors: [], fieldErrors: {} });
+  renderResponsibleState();
   scheduleAutoSave();
+  if (field === "productName" && event.type === "change") renderItems();
 }
 
 function handleItemAction(event) {
@@ -298,8 +302,29 @@ function handleItemAction(event) {
   const index = state.current.items.findIndex((entry) => entry.id === card.dataset.id);
   if (index < 0) return;
 
-  pushUndo();
   const item = state.current.items[index];
+  if (button.dataset.action === "accept-review") {
+    const errors = validateRequisitionItem(item, index);
+    if (errors.length) {
+      renderValidation({ ok: false, errors, fieldErrors: {} });
+      renderResponsibleState();
+      toast(errors[0]);
+      return;
+    }
+    pushUndo();
+    const previous = clone(item);
+    item.productName = item.productName.trim();
+    item.needsReview = false;
+    item.unitOverride = item.unitAllowed === false ? true : item.unitOverride;
+    item.confidence = Math.max(Number(item.confidence || 0), 85);
+    addChange(state.current, "aceptar_linea", previous, item);
+    autoSaveOrder();
+    render();
+    toast(`Línea ${index + 1} aceptada.`);
+    return;
+  }
+
+  pushUndo();
   if (button.dataset.action === "delete") {
     state.current.items.splice(index, 1);
     addChange(state.current, "eliminar_linea", item, null);
@@ -864,7 +889,10 @@ function renderItems() {
         <label>Unidad de compra <select data-field="unit">${options}</select></label>
         ${item.notes ? `<label class="notes-field">Observaciones <input data-field="notes" value="${escapeHtml(item.notes)}" /></label>` : ""}
       </div>
-      ${item.needsReview ? '<p class="review-note">Revise esta línea antes de confirmar.</p>' : ""}
+      ${item.needsReview ? `<div class="review-callout">
+        <p class="review-note">Revise esta línea antes de confirmar.</p>
+        <button type="button" data-action="accept-review">Aceptar línea</button>
+      </div>` : ""}
       ${item.unitAllowed === false ? `<label class="check-row">
         <input data-field="unitOverride" type="checkbox" ${item.unitOverride ? "checked" : ""} />
         <span>Autorizar unidad no habitual</span>
@@ -1036,7 +1064,7 @@ function toast(message) {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("./service-worker.js?v=1").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=5").catch(() => {});
   }
 }
 

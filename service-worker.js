@@ -1,5 +1,5 @@
-const APP_VERSION = "v4";
-const APP_ASSET_QUERY = "v=4";
+const APP_VERSION = "v5";
+const APP_ASSET_QUERY = "v=5";
 const CACHE_PREFIX = "requisiciones-voz-mobile-";
 const CACHE_NAME = `${CACHE_PREFIX}${APP_VERSION}`;
 const ASSETS = [

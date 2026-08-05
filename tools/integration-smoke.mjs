@@ -12,7 +12,8 @@ import {
   createRequisition,
   markConfirmed,
   normalizeRequisition,
-  validateRequisition
+  validateRequisition,
+  validateRequisitionItem
 } from "../src/requisitions.js";
 import { loadCatalog, STORAGE_KEYS } from "../src/storage.js";
 
@@ -25,6 +26,14 @@ requisition.originalTranscript = parsed.originalText;
 
 const validation = validateRequisition(requisition, catalog, "confirm");
 assert.equal(validation.ok, true, validation.errors.join(" | "));
+assert.deepEqual(
+  validateRequisitionItem({ productName: "", quantity: 20, unit: "kg" }, 1),
+  ["Linea 2: falta el producto."]
+);
+assert.deepEqual(
+  validateRequisitionItem({ productName: "Uva Verde", quantity: 1, unit: "kg" }, 2),
+  []
+);
 
 markConfirmed(requisition);
 assert.equal(requisition.status, "confirmed");

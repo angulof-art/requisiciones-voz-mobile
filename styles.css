@@ -448,6 +448,22 @@ h2 {
   font-weight: 720;
 }
 
+.review-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.6rem;
+  border-radius: 7px;
+  background: #fff4df;
+}
+
+.review-callout button {
+  min-width: max-content;
+  min-height: 40px;
+  padding: 0.5rem 0.75rem;
+}
+
 .check-row {
   display: flex;
   align-items: center;
