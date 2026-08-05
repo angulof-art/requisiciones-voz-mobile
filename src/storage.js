@@ -1,4 +1,5 @@
 import { DEFAULT_CATALOG, normalizeCatalog } from "./catalog.js";
+import { PUBLIC_APP_CONFIG } from "./config.js";
 import { createRequisition, normalizeRequisition } from "./requisitions.js";
 
 export const STORAGE_KEYS = {
@@ -94,17 +95,26 @@ export function rememberName(name) {
 }
 
 export function loadSettings() {
+  const saved = readJson(STORAGE_KEYS.settings, {});
+  const savedSupabase = saved.supabase || {};
+  const shouldSeedIntegration =
+    savedSupabase.integrationVersion !== PUBLIC_APP_CONFIG.integrationVersion;
   return {
     hourFormat: "24",
     textSize: "normal",
+    ...saved,
     supabase: {
-      url: "",
-      publishableKey: "",
-      workspaceId: "main",
-      enabled: false,
-      lastSyncAt: ""
-    },
-    ...readJson(STORAGE_KEYS.settings, {})
+      ...PUBLIC_APP_CONFIG.supabase,
+      ...savedSupabase,
+      url: savedSupabase.url || PUBLIC_APP_CONFIG.supabase.url,
+      publishableKey:
+        savedSupabase.publishableKey || PUBLIC_APP_CONFIG.supabase.publishableKey,
+      enabled: shouldSeedIntegration
+        ? PUBLIC_APP_CONFIG.supabase.enabled
+        : savedSupabase.enabled !== false,
+      integrationVersion: PUBLIC_APP_CONFIG.integrationVersion,
+      lastSyncAt: savedSupabase.lastSyncAt || ""
+    }
   };
 }
 
@@ -117,7 +127,10 @@ export function loadSyncQueue() {
 }
 
 export function queueSyncChange(type, payload) {
-  const queue = loadSyncQueue();
+  const payloadId = payload?.id || "";
+  const queue = loadSyncQueue().filter(
+    (entry) => !(payloadId && entry.type === type && entry.payload?.id === payloadId)
+  );
   queue.unshift({
     id: createQueueId(),
     type,

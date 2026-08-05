@@ -42,6 +42,15 @@ const cases = [
     item: { productName: "Tomate", quantity: 5, unit: "caja", needsReview: false }
   },
   {
+    phrase: "10 cajas de leche, 5 kg de azúcar, 12 paquetes de arroz",
+    count: 3,
+    items: [
+      { productName: "Leche", quantity: 10, unit: "caja", needsReview: false },
+      { productName: "Azúcar", quantity: 5, unit: "kg", needsReview: false },
+      { productName: "Arroz", quantity: 12, unit: "paquete", needsReview: false }
+    ]
+  },
+  {
     phrase: "10 lechugas 4 kg de tomate",
     count: 2,
     items: [

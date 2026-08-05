@@ -94,6 +94,36 @@ export const DEFAULT_CATALOG = [
     allowedUnits: ["kg", "und", "bolsa"],
     synonyms: ["cebollas", "cebolla blanca", "cebolla morada"],
     active: true
+  },
+  {
+    id: "prod-aba-001",
+    code: "ABA-001",
+    officialName: "Leche",
+    category: "Abarrotes",
+    defaultUnit: "caja",
+    allowedUnits: ["caja", "L", "botella", "paquete"],
+    synonyms: ["leches", "caja de leche", "cajas de leche"],
+    active: true
+  },
+  {
+    id: "prod-aba-002",
+    code: "ABA-002",
+    officialName: "Azúcar",
+    category: "Abarrotes",
+    defaultUnit: "kg",
+    allowedUnits: ["kg", "g", "bolsa", "paquete"],
+    synonyms: ["azucar", "azúcares", "azucares"],
+    active: true
+  },
+  {
+    id: "prod-aba-003",
+    code: "ABA-003",
+    officialName: "Arroz",
+    category: "Abarrotes",
+    defaultUnit: "paquete",
+    allowedUnits: ["paquete", "kg", "g", "bolsa"],
+    synonyms: ["arroces", "paquete de arroz", "paquetes de arroz"],
+    active: true
   }
 ];
 

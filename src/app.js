@@ -49,6 +49,9 @@ let isListening = false;
 let replaceIndex = null;
 let speechSessionBaseText = "";
 let speechSessionFinalText = "";
+let autoSaveTimer = null;
+let autoSyncTimer = null;
+let supabaseConnectionState = "checking";
 
 const els = {
   screenTitle: document.querySelector("#screenTitle"),
@@ -64,8 +67,9 @@ const els = {
   transcriptInput: document.querySelector("#transcriptInput"),
   speechStatus: document.querySelector("#speechStatus"),
   processTranscriptButton: document.querySelector("#processTranscriptButton"),
-  saveDraftButton: document.querySelector("#saveDraftButton"),
-  goReviewButton: document.querySelector("#goReviewButton"),
+  lastTranscript: document.querySelector("#lastTranscript"),
+  autosaveState: document.querySelector("#autosaveState"),
+  itemCount: document.querySelector("#itemCount"),
   requisitionNumber: document.querySelector("#requisitionNumber"),
   statusBadge: document.querySelector("#statusBadge"),
   addRowButton: document.querySelector("#addRowButton"),
@@ -128,6 +132,7 @@ function boot() {
   applySettingsToForm();
   render();
   registerServiceWorker();
+  verifySupabaseConnection();
 }
 
 function bindEvents() {
@@ -139,12 +144,11 @@ function bindEvents() {
     state.current.requestedBy = els.requestedBy.value;
     saveCurrentRequisition(state.current);
     renderResponsibleState();
+    scheduleAutoSave();
   });
 
   els.voiceButton.addEventListener("click", toggleSpeech);
   els.processTranscriptButton.addEventListener("click", processTranscript);
-  els.saveDraftButton.addEventListener("click", saveDraft);
-  els.goReviewButton.addEventListener("click", () => navigate("review"));
   els.addRowButton.addEventListener("click", addManualRow);
   els.undoButton.addEventListener("click", undoLast);
   els.combineDuplicatesButton.addEventListener("click", showDuplicateSuggestion);
@@ -184,10 +188,14 @@ function bindEvents() {
   els.syncNowButton.addEventListener("click", syncNow);
 
   window.addEventListener("online", () => {
+    supabaseConnectionState = "checking";
     renderConnection();
-    toast("Conectado. Puede sincronizar cambios pendientes.");
+    verifySupabaseConnection();
   });
-  window.addEventListener("offline", renderConnection);
+  window.addEventListener("offline", () => {
+    supabaseConnectionState = "offline";
+    renderConnection();
+  });
 }
 
 function navigate(target) {
@@ -195,7 +203,6 @@ function navigate(target) {
   els.navButtons.forEach((button) => button.classList.toggle("active", button.dataset.target === target));
   const titles = {
     new: "Nuevo pedido",
-    review: "Revisión del pedido",
     history: "Historial",
     catalog: "Catálogo",
     config: "Configuración",
@@ -237,11 +244,14 @@ function processTranscript(textOverride = null) {
     state.current.items.push(...parsed.items.map(normalizeItem));
   }
   addChange(state.current, "dictado", null, parsed.items);
-  persistCurrent();
-  render();
-  navigate("review");
-  showDuplicateSuggestion();
-  toast("Revise los productos antes de confirmar.");
+  els.lastTranscript.textContent = `Último dictado: ${parsed.originalText}`;
+  els.lastTranscript.hidden = false;
+  els.transcriptInput.value = "";
+  autoSaveOrder();
+  renderSummary();
+  renderItems();
+  showDuplicateSuggestion(true);
+  toast(`${parsed.items.length} ${parsed.items.length === 1 ? "producto agregado" : "productos agregados"}.`);
 }
 
 function addManualRow() {
@@ -258,9 +268,8 @@ function addManualRow() {
     })
   );
   addChange(state.current, "agregar_manual", null, state.current.items.at(-1));
-  persistCurrent();
+  autoSaveOrder();
   render();
-  navigate("review");
 }
 
 function handleItemEdit(event) {
@@ -279,6 +288,7 @@ function handleItemEdit(event) {
   state.current.updatedAt = new Date().toISOString();
   persistCurrent();
   renderSummary();
+  scheduleAutoSave();
 }
 
 function handleItemAction(event) {
@@ -326,22 +336,8 @@ function handleItemAction(event) {
     item.confidence = 88;
     addChange(state.current, "seleccionar_sugerencia", null, item);
   }
-  persistCurrent();
+  autoSaveOrder();
   render();
-}
-
-function saveDraft() {
-  state.current.requestedBy = els.requestedBy.value.trim();
-  const validation = validateRequisition(state.current, state.catalog, "draft");
-  renderValidation(validation);
-  if (!validation.ok) {
-    toast(validation.errors[0]);
-    return;
-  }
-  state.current.status = state.current.items.some((item) => item.needsReview) ? "review" : "draft";
-  addChange(state.current, "guardar_borrador", null, state.current);
-  saveOrderAndQueue();
-  toast("Pedido guardado como borrador.");
 }
 
 function confirmOrder() {
@@ -391,11 +387,11 @@ function validateBeforeExport() {
   return true;
 }
 
-function showDuplicateSuggestion() {
+function showDuplicateSuggestion(silent = false) {
   const [group] = findDuplicateGroups(state.current.items);
   if (!group) {
     els.duplicateBanner.hidden = true;
-    toast("No hay productos repetidos para combinar.");
+    if (!silent) toast("No hay productos repetidos para combinar.");
     return;
   }
   const total = group.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
@@ -406,7 +402,7 @@ function showDuplicateSuggestion() {
 function combineDuplicates() {
   pushUndo();
   combineDuplicateItems(state.current);
-  persistCurrent();
+  autoSaveOrder();
   els.duplicateBanner.hidden = true;
   render();
   toast("Productos repetidos combinados.");
@@ -419,7 +415,7 @@ function undoLast() {
     return;
   }
   state.current = previous;
-  persistCurrent();
+  autoSaveOrder();
   render();
   toast("Última acción deshecha.");
 }
@@ -436,6 +432,35 @@ function saveOrderAndQueue() {
   state.syncQueue = queueSyncChange("requisition", { id: state.current.id });
   persistCurrent();
   render();
+  scheduleAutoSync();
+}
+
+function autoSaveOrder() {
+  state.current.requestedBy = els.requestedBy.value.trim();
+  state.current.updatedAt = new Date().toISOString();
+  if (!["confirmed", "exported", "voided"].includes(state.current.status)) {
+    state.current.status = state.current.items.some((item) => item.needsReview) ? "review" : "draft";
+  }
+  state.requisitions = upsertRequisition(state.current);
+  state.syncQueue = queueSyncChange("requisition", { id: state.current.id });
+  persistCurrent();
+  els.autosaveState.textContent = navigator.onLine ? "Guardando..." : "Guardado local";
+  els.autosaveState.classList.remove("synced");
+  scheduleAutoSync();
+}
+
+function scheduleAutoSave() {
+  window.clearTimeout(autoSaveTimer);
+  autoSaveTimer = window.setTimeout(() => {
+    if (state.current.items.length) autoSaveOrder();
+    else persistCurrent();
+  }, 450);
+}
+
+function scheduleAutoSync() {
+  if (!navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
+  window.clearTimeout(autoSyncTimer);
+  autoSyncTimer = window.setTimeout(() => performSupabaseSync(true), 900);
 }
 
 function startNewOrder() {
@@ -445,6 +470,7 @@ function startNewOrder() {
   clearCurrentRequisition();
   state.current = createRequisition(state.requisitions);
   els.transcriptInput.value = "";
+  els.lastTranscript.hidden = true;
   persistCurrent();
   render();
   navigate("new");
@@ -534,7 +560,7 @@ function handleHistoryAction(event) {
     els.transcriptInput.value = state.current.originalTranscript || "";
     persistCurrent();
     render();
-    navigate("review");
+    navigate("new");
   }
   if (button.dataset.action === "duplicate") {
     const copy = createRequisition(state.requisitions);
@@ -545,7 +571,7 @@ function handleHistoryAction(event) {
     state.current = copy;
     persistCurrent();
     render();
-    navigate("review");
+    navigate("new");
     toast("Pedido duplicado como borrador.");
   }
   if (button.dataset.action === "void") {
@@ -598,20 +624,58 @@ function saveSupabaseSettingsFromForm() {
 async function syncNow() {
   saveSupabaseSettingsFromForm();
   if (!isSupabaseReady(state.settings.supabase)) return;
+  await performSupabaseSync(false);
+}
+
+async function verifySupabaseConnection() {
+  if (!navigator.onLine) {
+    supabaseConnectionState = "offline";
+    renderConnection();
+    return;
+  }
+  if (!isSupabaseReady(state.settings.supabase)) {
+    supabaseConnectionState = "error";
+    renderSupabaseMessage("Supabase no está configurado.");
+    renderConnection();
+    return;
+  }
   try {
-    renderSupabaseMessage("Probando conexión...");
+    supabaseConnectionState = "checking";
+    renderConnection();
+    await testSupabase(state.settings.supabase);
+    supabaseConnectionState = "connected";
+    renderSupabaseMessage("Conectado con Supabase.");
+    renderConnection();
+    if (state.syncQueue.length) scheduleAutoSync();
+  } catch (error) {
+    supabaseConnectionState = "error";
+    const classified = classifySupabaseError(error);
+    renderSupabaseMessage(`${classified.label}: ${classified.message}`, classified.technical);
+    renderConnection();
+  }
+}
+
+async function performSupabaseSync(silent = false) {
+  if (!navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
+  try {
+    if (!silent) renderSupabaseMessage("Sincronizando...");
     await testSupabase(state.settings.supabase);
     await syncAllToSupabase(state.settings.supabase, state.requisitions, state.catalog);
     state.settings.supabase.lastSyncAt = new Date().toISOString();
     state.syncQueue = [];
     saveSyncQueue([]);
     saveSettings(state.settings);
-    renderSupabaseMessage("Sincronizado.");
+    supabaseConnectionState = "connected";
+    els.autosaveState.textContent = "Sincronizado";
+    els.autosaveState.classList.add("synced");
+    renderSupabaseMessage("Sincronizado con Supabase.");
     render();
   } catch (error) {
+    supabaseConnectionState = "error";
     const classified = classifySupabaseError(error);
     renderSupabaseMessage(`${classified.label}: ${classified.message}`, classified.technical);
-    toast(classified.message);
+    if (!silent) toast(classified.message);
+    renderConnection();
   }
 }
 
@@ -630,12 +694,12 @@ function setupSpeechRecognition() {
   recognition.interimResults = true;
   recognition.onstart = () => {
     isListening = true;
-    speechSessionBaseText = normalizeSpeechSegment(els.transcriptInput.value);
+    speechSessionBaseText = "";
     speechSessionFinalText = "";
     els.voiceButton.classList.add("listening");
     els.voiceButton.setAttribute("aria-pressed", "true");
-    els.voicePrimary.textContent = "Escuchando...";
-    els.voiceSecondary.textContent = "Presione para detener";
+    els.voicePrimary.textContent = "Escuchando";
+    els.voiceSecondary.textContent = "Toque para detener";
     els.speechStatus.textContent = "Escuchando...";
   };
   recognition.onerror = (event) => {
@@ -736,13 +800,19 @@ function stopSpeechUi() {
   isListening = false;
   els.voiceButton.classList.remove("listening");
   els.voiceButton.setAttribute("aria-pressed", "false");
-  els.voicePrimary.textContent = "Iniciar dictado";
-  els.voiceSecondary.textContent = "Presione para hablar";
+  els.voicePrimary.textContent = "Dictar";
+  els.voiceSecondary.textContent = "Toque para hablar";
 }
 
 function render() {
   els.requestedBy.value = state.current.requestedBy || "";
-  els.transcriptInput.value ||= state.current.originalTranscript || "";
+  const previousTranscripts = String(state.current.originalTranscript || "")
+    .split("\n")
+    .filter(Boolean);
+  els.lastTranscript.hidden = previousTranscripts.length === 0;
+  els.lastTranscript.textContent = previousTranscripts.length
+    ? `Último dictado: ${previousTranscripts.at(-1)}`
+    : "";
   renderResponsibleState();
   renderSummary();
   renderItems();
@@ -767,6 +837,7 @@ function renderResponsibleState() {
 
 function renderItems() {
   els.itemsList.innerHTML = "";
+  els.itemCount.textContent = String(state.current.items.length);
   const units = unitOptions();
   state.current.items.forEach((item, index) => {
     const card = document.createElement("article");
@@ -784,33 +855,22 @@ function renderItems() {
       .join("");
     card.innerHTML = `
       <div class="item-header">
-        <div>
-          <div class="item-title">Línea ${index + 1}</div>
-          <div class="meta-line">
-            <span>${item.confidence || 0}% confianza</span>
-            ${item.productCode ? `<span>${escapeHtml(item.productCode)}</span>` : ""}
-            ${item.needsReview ? "<span>Revisar</span>" : "<span>OK</span>"}
-          </div>
-        </div>
+        <div class="item-title">Línea ${index + 1}</div>
+        ${item.needsReview ? '<span class="state-badge">Revisar</span>' : ""}
       </div>
       <div class="item-grid">
-        <label>Producto <input data-field="productName" value="${escapeHtml(item.productName)}" /></label>
+        <label class="product-field">Producto <input data-field="productName" value="${escapeHtml(item.productName)}" /></label>
         <label>Cantidad <input data-field="quantity" type="number" min="0.001" step="0.001" value="${item.quantity ?? ""}" /></label>
-        <label>Unidad <select data-field="unit">${options}</select></label>
-        <label>Observaciones <input data-field="notes" value="${escapeHtml(item.notes || "")}" /></label>
+        <label>Unidad de compra <select data-field="unit">${options}</select></label>
+        ${item.notes ? `<label class="notes-field">Observaciones <input data-field="notes" value="${escapeHtml(item.notes)}" /></label>` : ""}
       </div>
-      <label class="check-row">
-        <input data-field="needsReview" type="checkbox" ${item.needsReview ? "checked" : ""} />
-        <span>Necesita revisión</span>
-      </label>
-      <label class="check-row">
+      ${item.needsReview ? '<p class="review-note">Revise esta línea antes de confirmar.</p>' : ""}
+      ${item.unitAllowed === false ? `<label class="check-row">
         <input data-field="unitOverride" type="checkbox" ${item.unitOverride ? "checked" : ""} />
         <span>Autorizar unidad no habitual</span>
-      </label>
+      </label>` : ""}
       ${suggestions ? `<div class="toolbar">${suggestions}</div>` : ""}
       <div class="card-actions">
-        <button class="secondary" type="button" data-action="up">Subir</button>
-        <button class="secondary" type="button" data-action="down">Bajar</button>
         <button class="secondary" type="button" data-action="duplicate">Duplicar</button>
         <button class="secondary" type="button" data-action="replace-voice">Redictar</button>
         <button class="danger" type="button" data-action="delete">Eliminar</button>
@@ -819,7 +879,6 @@ function renderItems() {
     els.itemsList.append(card);
   });
   els.itemsEmpty.classList.toggle("visible", state.current.items.length === 0);
-  renderValidation({ ok: true, errors: [] });
 }
 
 function renderValidation(validation) {
@@ -911,9 +970,17 @@ function renderCatalog() {
 
 function renderConnection() {
   const online = navigator.onLine;
-  els.connectionBadge.textContent = online ? "Conectado" : "Sin conexión";
-  els.connectionBadge.classList.toggle("online", online);
-  els.networkState.textContent = online ? "Conectado" : "Sin conexión";
+  const labels = {
+    connected: "Supabase",
+    checking: "Conectando",
+    error: "Sin sincronizar",
+    offline: "Sin conexión"
+  };
+  const currentState = online ? supabaseConnectionState : "offline";
+  els.connectionBadge.textContent = labels[currentState] || labels.error;
+  els.connectionBadge.classList.toggle("online", currentState === "connected");
+  els.connectionBadge.classList.toggle("error", currentState === "error");
+  els.networkState.textContent = labels[currentState] || labels.error;
   els.localCount.textContent = String(state.requisitions.length);
   els.pendingCount.textContent = String(state.syncQueue.length);
   els.lastSync.textContent = state.settings.supabase.lastSyncAt

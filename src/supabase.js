@@ -70,6 +70,11 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog) 
   const workspaceId = settings.workspaceId || "main";
   await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
   await upsertRows(settings, "requisitions", [requisitionToRow(requisition, workspaceId)]);
+  await supabaseRequest(settings, "requisition_items", {
+    method: "DELETE",
+    query: `requisition_id=eq.${encodeURIComponent(requisition.id)}`,
+    prefer: "return=minimal"
+  });
   await upsertRows(
     settings,
     "requisition_items",

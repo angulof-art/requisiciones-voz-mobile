@@ -31,32 +31,16 @@ assert.equal(requisition.status, "confirmed");
 assert.ok(requisition.confirmedAt);
 
 const rows = requisitionToExcelRows(requisition, catalog);
-assert.deepEqual(rows[0].slice(0, 12), [
-  "Codigo",
-  "Categoria",
-  "Nombre oficial",
-  "Nombre corto",
-  "Alias de voz",
+assert.deepEqual(rows[0], [
   "Producto",
   "Cantidad",
-  "Unidad de conteo",
-  "Contenido por unidad",
-  "Unidad base",
-  "Cantidad total",
-  "Costo unitario"
+  "Unidad de compra"
 ]);
-assert.equal(rows[1][0], "FRU-001");
-assert.equal(rows[1][1], "Frutas");
-assert.equal(rows[1][5], "Banano");
-assert.equal(rows[1][6], 30);
-assert.equal(rows[1][7], "und");
-assert.equal(rows[1][10], 30);
-assert.equal(rows[1][24], "REQ-20260803-0001");
+assert.deepEqual(rows[1], ["Banano", 30, "und"]);
 
 const csv = requisitionToCsv(requisition, catalog);
-assert.ok(csv.includes("REQ-20260803-0001"));
-assert.ok(csv.includes("Chef Prueba"));
 assert.ok(csv.includes("Banano"));
+assert.ok(csv.includes("Unidad de compra"));
 
 const xlsx = await requisitionToXlsxBlob(requisition, catalog).arrayBuffer();
 const bytes = new Uint8Array(xlsx);
@@ -65,6 +49,7 @@ assert.equal(bytes[0], 0x50);
 assert.equal(bytes[1], 0x4b);
 assert.ok(zipText.includes("xl/worksheets/sheet1.xml"));
 assert.ok(zipText.includes("autoFilter"));
+assert.ok(zipText.includes("Unidad de compra"));
 
 const pdfHtml = buildPrintableHtml(requisition);
 assert.ok(pdfHtml.includes("Guardar como PDF"));

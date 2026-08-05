@@ -1,85 +1,22 @@
-import { csvCell, findProductMatch } from "./catalog.js";
+import { csvCell } from "./catalog.js";
 import { STATUS, formatDateParts } from "./requisitions.js";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-const INVENTORY_STYLE_HEADERS = [
-  "Codigo",
-  "Categoria",
-  "Nombre oficial",
-  "Nombre corto",
-  "Alias de voz",
+const ORDER_HEADERS = [
   "Producto",
   "Cantidad",
-  "Unidad de conteo",
-  "Contenido por unidad",
-  "Unidad base",
-  "Cantidad total",
-  "Costo unitario",
-  "Valor total",
-  "Existencia minima",
-  "Existencia maxima",
-  "Estado de stock",
-  "Estado activo",
-  "Proveedor",
-  "Marca",
-  "Area",
-  "Ubicacion",
-  "Codigo de barras",
-  "Codigo QR",
-  "Actualizado",
-  "Numero de pedido",
-  "Fecha",
-  "Hora",
-  "Responsable",
-  "Estado pedido",
-  "Observaciones"
+  "Unidad de compra"
 ];
 
 export function requisitionToExcelRows(requisition, catalog = [], hourFormat = "24") {
-  const created = formatDateParts(requisition.createdAt, hourFormat);
-  const rows = [INVENTORY_STYLE_HEADERS];
+  const rows = [ORDER_HEADERS];
 
   for (const item of requisition.items || []) {
-    const product = findCatalogProduct(item, catalog);
-    const quantity = Number(item.quantity || 0);
-    const contentPerUnit = numberOrBlank(product?.contentPerUnit ?? product?.content_per_unit);
-    const cost = numberOrBlank(product?.cost ?? product?.unitCost ?? product?.unit_cost);
-    const totalQuantity = Number.isFinite(contentPerUnit) ? quantity * contentPerUnit : quantity;
-    const totalValue = Number.isFinite(cost) ? cost * totalQuantity : "";
-    const baseUnit = product?.baseUnit || product?.base_unit || item.unit || product?.defaultUnit || "";
-
     rows.push([
-      item.productCode || product?.code || "",
-      product?.category || "",
-      product?.officialName || item.productName,
-      product?.shortName || product?.short_name || product?.officialName || item.productName,
-      Array.isArray(product?.synonyms) ? product.synonyms.join(", ") : "",
       item.productName,
-      quantity,
-      item.unit,
-      formatContentPerUnit(contentPerUnit, product, item),
-      baseUnit,
-      roundSpreadsheetNumber(totalQuantity),
-      Number.isFinite(cost) ? cost : "",
-      Number.isFinite(totalValue) ? roundSpreadsheetNumber(totalValue) : "",
-      numberOrBlank(product?.minimum ?? product?.min),
-      numberOrBlank(product?.maximum ?? product?.max),
-      "",
-      product?.active === false ? "Inactivo" : "Activo",
-      product?.supplier || "",
-      product?.brand || "",
-      product?.area || "",
-      product?.location || "",
-      product?.barcode || "",
-      product?.qr || "",
-      product?.updatedAt || product?.updated_at || "",
-      requisition.requisitionNumber,
-      created.date,
-      created.time,
-      requisition.requestedBy,
-      STATUS[requisition.status] || requisition.status,
-      item.notes || ""
+      Number(item.quantity || 0),
+      item.unit
     ]);
   }
 
@@ -233,32 +170,6 @@ export function escapeHtml(value) {
   return escapeXml(value);
 }
 
-function findCatalogProduct(item, catalog) {
-  if (!Array.isArray(catalog) || !catalog.length) return null;
-  const code = String(item.productCode || "").trim().toUpperCase();
-  const byCode = code ? catalog.find((product) => product.code === code) : null;
-  if (byCode) return byCode;
-  const match = findProductMatch(item.productName, catalog);
-  return match.score >= 0.62 ? match.product : null;
-}
-
-function formatContentPerUnit(contentPerUnit, product, item) {
-  if (!Number.isFinite(contentPerUnit)) return "";
-  const unit = product?.contentUnit || product?.content_unit || product?.baseUnit || item.unit || "";
-  return `${formatNumber(contentPerUnit)} ${unit}`.trim();
-}
-
-function numberOrBlank(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : "";
-}
-
-function roundSpreadsheetNumber(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "";
-  return Math.round((number + Number.EPSILON) * 1000) / 1000;
-}
-
 function formatNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "";
@@ -368,10 +279,7 @@ ${worksheetRelationships}
 }
 
 function buildWorksheetXml(rows) {
-  const widths = [
-    15, 18, 28, 20, 34, 30, 12, 17, 20, 14, 14, 14, 14, 16, 16, 15, 14, 20,
-    18, 18, 22, 18, 18, 20, 20, 12, 12, 24, 16, 32
-  ];
+  const widths = [34, 14, 20];
   const columnCount = Math.max(rows[0]?.length || 1, 1);
   const columnsXml = Array.from({ length: columnCount }, (_, index) => {
     const column = index + 1;

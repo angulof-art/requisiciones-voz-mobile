@@ -4,17 +4,19 @@ Aplicacion web movil para crear pedidos o requisiciones por voz.
 
 ## Funciones incluidas
 
-- Responsable obligatorio antes de guardar, confirmar o exportar.
+- Responsable obligatorio antes de confirmar o exportar.
 - Reconocimiento de voz en espanol de Costa Rica cuando el navegador lo soporte.
-- Transcripcion visible.
+- Cada dictado se interpreta y agrega directamente al pedido, sin un paso de aceptacion.
 - Parser de productos, cantidades, unidades y observaciones.
-- Tarjetas editables mobile-first.
-- Agregar, eliminar, duplicar, reordenar, combinar duplicados y deshacer.
-- Guardar borrador, confirmar, exportar y anular sin borrar historial.
+- Pantalla unica mobile-first con boton de voz compacto y lineas editables.
+- Agregar, eliminar, duplicar, redictar, combinar duplicados y deshacer.
+- Guardado automatico local y sincronizacion en segundo plano.
+- Confirmar, exportar y anular sin borrar historial.
 - Numeracion diaria tipo `REQ-20260803-0001`.
 - Historial con busqueda, filtros, duplicado y reapertura de borradores.
 - Catalogo importable por CSV.
-- Exportacion PDF imprimible y Excel `.xlsx` con columnas estilo inventario.
+- Exportacion PDF imprimible y Excel `.xlsx` con `Producto`, `Cantidad` y
+  `Unidad de compra`.
 - CSV compatible con Google Sheets disponible desde el modulo de exportacion.
 - PWA offline con indicador de conexion y cola de sincronizacion.
 - Migracion SQL para Supabase.
@@ -58,7 +60,8 @@ code,official_name,category,default_unit,allowed_units,synonyms,active
 1. Ejecuta `supabase/migrations/202608030001_requisitions.sql`.
 2. Para una prueba funcional sin login, ejecuta tambien
    `supabase/migrations/202608030002_dev_anon_requisitions.sql`.
-3. Usa solo la URL del proyecto y una publishable key.
+3. La version publicada incluye la URL y la publishable key publica del proyecto
+   de demostracion en `src/config.js`.
 4. No uses `service_role`, `sb_secret_` ni credenciales privadas.
 5. Para produccion, configura Supabase Auth y retira la migracion `dev_anon`.
    Esa segunda migracion es para demo/piloto, no para datos sensibles.

@@ -4,14 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0f766e" />
-    <meta
-      name="description"
-      content="Aplicacion movil para pedidos y requisiciones por voz."
-    />
+    <meta name="description" content="Aplicación móvil para pedidos y requisiciones por voz." />
     <title>Pedidos por Voz</title>
-    <link rel="manifest" href="./manifest.webmanifest?v=3" />
-    <link rel="icon" href="./icon.svg?v=3" />
-    <link rel="stylesheet" href="./styles.css?v=3" />
+    <link rel="manifest" href="./manifest.webmanifest?v=4" />
+    <link rel="icon" href="./icon.svg?v=4" />
+    <link rel="stylesheet" href="./styles.css?v=4" />
   </head>
   <body>
     <div class="app-shell">
@@ -20,44 +17,12 @@
           <p class="eyebrow">Pedidos por voz</p>
           <h1 id="screenTitle">Nuevo pedido</h1>
         </div>
-        <button class="status-pill" id="connectionBadge" type="button">Sin conexión</button>
+        <button class="status-pill" id="connectionBadge" type="button">Conectando</button>
       </header>
 
       <main>
-        <section class="screen active" id="screen-new" data-screen="new" aria-labelledby="newTitle">
-          <div class="responsible-block">
-            <label for="requestedBy">Responsable del pedido</label>
-            <input id="requestedBy" list="recentNames" autocomplete="name" placeholder="Nombre y apellido" />
-            <datalist id="recentNames"></datalist>
-            <p class="field-error" id="responsibleError"></p>
-          </div>
-
-          <button class="voice-button" id="voiceButton" type="button" aria-pressed="false">
-            <span id="voicePrimary">Iniciar dictado</span>
-            <small id="voiceSecondary">Presione para hablar</small>
-          </button>
-
-          <div class="transcript-panel">
-            <div class="panel-heading">
-              <h2>Transcripción</h2>
-              <button class="text-action" id="processTranscriptButton" type="button">Procesar texto</button>
-            </div>
-            <textarea
-              id="transcriptInput"
-              rows="4"
-              placeholder="También puede escribir: 30 unidades de banano, 10 kilos de sandía..."
-            ></textarea>
-            <p class="hint" id="speechStatus">Listo para dictar.</p>
-          </div>
-
-          <div class="quick-actions">
-            <button id="saveDraftButton" type="button">Guardar borrador</button>
-            <button class="secondary" id="goReviewButton" type="button">Revisar pedido</button>
-          </div>
-        </section>
-
-        <section class="screen" id="screen-review" data-screen="review" aria-labelledby="reviewTitle">
-          <div class="request-summary">
+        <section class="screen active order-screen" id="screen-new" data-screen="new" aria-labelledby="screenTitle">
+          <div class="request-summary compact-summary">
             <div>
               <p class="eyebrow">Requisición</p>
               <h2 id="requisitionNumber">REQ</h2>
@@ -65,27 +30,74 @@
             <span class="state-badge" id="statusBadge">Borrador</span>
           </div>
 
-          <div class="toolbar">
-            <button id="addRowButton" type="button">Agregar fila</button>
-            <button class="secondary" id="undoButton" type="button">Deshacer</button>
-            <button class="secondary" id="combineDuplicatesButton" type="button">Combinar repetidos</button>
+          <div class="responsible-block compact-block">
+            <label for="requestedBy">Responsable del pedido</label>
+            <input id="requestedBy" list="recentNames" autocomplete="name" placeholder="Nombre y apellido" />
+            <datalist id="recentNames"></datalist>
+            <p class="field-error" id="responsibleError"></p>
           </div>
 
+          <section class="dictation-panel" aria-labelledby="dictationTitle">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Entrada rápida</p>
+                <h2 id="dictationTitle">Dicte los productos</h2>
+              </div>
+              <span class="autosave-state" id="autosaveState">Guardado local</span>
+            </div>
+            <div class="dictation-composer">
+              <textarea
+                id="transcriptInput"
+                rows="2"
+                placeholder="Ejemplo: 10 und de lechuga, 5 kg de tomate"
+              ></textarea>
+              <button class="voice-button" id="voiceButton" type="button" aria-pressed="false">
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <path d="M12 19v3" />
+                </svg>
+                <span id="voicePrimary">Dictar</span>
+                <small id="voiceSecondary">Toque para hablar</small>
+              </button>
+            </div>
+            <div class="dictation-footer">
+              <p class="hint" id="speechStatus">Listo para dictar.</p>
+              <button class="text-action" id="processTranscriptButton" type="button">Agregar texto</button>
+            </div>
+            <p class="last-transcript" id="lastTranscript" hidden></p>
+          </section>
+
+          <div class="items-heading">
+            <div>
+              <p class="eyebrow">Pedido</p>
+              <h2>Productos <span id="itemCount">0</span></h2>
+            </div>
+            <div class="toolbar compact-toolbar">
+              <button class="secondary icon-button" id="undoButton" type="button" title="Deshacer" aria-label="Deshacer">↶</button>
+              <button class="secondary" id="addRowButton" type="button">Agregar fila</button>
+            </div>
+          </div>
+
+          <button class="visually-hidden" id="combineDuplicatesButton" type="button">Combinar repetidos</button>
           <div class="duplicate-banner" id="duplicateBanner" hidden>
             <p id="duplicateText"></p>
-            <button id="confirmCombineButton" type="button">Combinar</button>
-            <button class="secondary" id="keepDuplicatesButton" type="button">Mantener</button>
+            <div class="toolbar">
+              <button id="confirmCombineButton" type="button">Combinar</button>
+              <button class="secondary" id="keepDuplicatesButton" type="button">Mantener</button>
+            </div>
           </div>
 
           <div class="items-list" id="itemsList"></div>
-          <div class="empty-state" id="itemsEmpty">Agregue productos por voz o manualmente.</div>
-
+          <div class="empty-state" id="itemsEmpty">Dicte un producto o agréguelo manualmente.</div>
           <div class="validation-list" id="validationList"></div>
 
-          <div class="action-stack">
+          <div class="order-actions">
             <button id="confirmButton" type="button">Confirmar pedido</button>
-            <button class="secondary" id="exportPdfButton" type="button">Generar PDF</button>
-            <button class="secondary" id="exportCsvButton" type="button">Exportar Excel</button>
+            <div class="export-actions">
+              <button class="secondary" id="exportPdfButton" type="button">PDF</button>
+              <button class="secondary" id="exportCsvButton" type="button">Excel</button>
+            </div>
           </div>
         </section>
 
@@ -169,7 +181,7 @@
           <div class="settings-card">
             <h3>Supabase</h3>
             <label>URL del proyecto <input id="supabaseUrl" placeholder="https://proyecto.supabase.co" /></label>
-            <label>Publishable key <input id="supabaseKey" type="password" placeholder="sb_publishable_..." /></label>
+            <label>Publishable key <input id="supabaseKey" type="password" placeholder="Configurada en la aplicación" /></label>
             <label>Workspace <input id="supabaseWorkspace" value="main" /></label>
             <label class="check-row">
               <input id="supabaseEnabled" type="checkbox" />
@@ -179,7 +191,7 @@
               <button id="saveSupabaseButton" type="button">Guardar conexión</button>
               <button class="secondary" id="syncNowButton" type="button">Sincronizar</button>
             </div>
-            <p class="hint" id="supabaseMessage">Sin configurar.</p>
+            <p class="hint" id="supabaseMessage">Comprobando conexión.</p>
             <pre class="technical" id="supabaseTechnical" hidden></pre>
           </div>
         </section>
@@ -187,30 +199,17 @@
         <section class="screen" id="screen-sync" data-screen="sync" aria-labelledby="syncTitle">
           <h2 id="syncTitle">Estado de sincronización</h2>
           <div class="sync-grid">
-            <div>
-              <span>Conexión</span>
-              <strong id="networkState">Sin conexión</strong>
-            </div>
-            <div>
-              <span>Pedidos locales</span>
-              <strong id="localCount">0</strong>
-            </div>
-            <div>
-              <span>Pendientes</span>
-              <strong id="pendingCount">0</strong>
-            </div>
-            <div>
-              <span>Última sincronización</span>
-              <strong id="lastSync">Nunca</strong>
-            </div>
+            <div><span>Conexión</span><strong id="networkState">Comprobando</strong></div>
+            <div><span>Pedidos locales</span><strong id="localCount">0</strong></div>
+            <div><span>Pendientes</span><strong id="pendingCount">0</strong></div>
+            <div><span>Última sincronización</span><strong id="lastSync">Nunca</strong></div>
           </div>
           <div class="history-list" id="syncQueueList"></div>
         </section>
       </main>
 
       <nav class="bottom-nav" aria-label="Navegación principal">
-        <button class="active" data-target="new" type="button">Nuevo</button>
-        <button data-target="review" type="button">Revisión</button>
+        <button class="active" data-target="new" type="button">Pedido</button>
         <button data-target="history" type="button">Historial</button>
         <button data-target="catalog" type="button">Catálogo</button>
         <button data-target="config" type="button">Config</button>
@@ -219,6 +218,6 @@
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </div>
 
-    <script type="module" src="./src/app.js?v=3"></script>
+    <script type="module" src="./src/app.js?v=4"></script>
   </body>
 </html>

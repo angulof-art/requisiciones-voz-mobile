@@ -13,13 +13,15 @@ externos, pruebas con Node y migraciones SQL separadas.
 - `src/requisitions.js`: pedidos, validaciones, numeracion y cambios.
 - `src/storage.js`: persistencia local y cola de sincronizacion.
 - `src/exporters.js`: PDF imprimible, Excel `.xlsx` y CSV compatible con Google Sheets.
+- `src/config.js`: configuracion publica del proyecto Supabase del piloto.
 - `src/supabase.js`: REST seguro con publishable key, sin secretos.
 - `src/app.js`: UI, voz, edicion, historial, catalogo y configuracion.
 
 ## Datos
 
-La fuente local permite uso sin conexion. Supabase queda preparado como respaldo
-o sincronizacion cuando se configure Auth y se aplique la migracion SQL.
+La fuente local permite uso sin conexion. La configuracion publica incluida
+conecta el piloto a Supabase y la cola se sincroniza automaticamente cuando
+regresa la conexion.
 
 ## Supuestos
 
