@@ -1,6 +1,6 @@
-import { DEFAULT_CATALOG, normalizeCatalog } from "./catalog.js";
-import { PUBLIC_APP_CONFIG } from "./config.js";
-import { createRequisition, normalizeRequisition } from "./requisitions.js";
+import { DEFAULT_CATALOG, normalizeCatalog } from "./catalog.js?v=7";
+import { PUBLIC_APP_CONFIG } from "./config.js?v=7";
+import { createRequisition, normalizeRequisition } from "./requisitions.js?v=7";
 
 export const STORAGE_KEYS = {
   requisitions: "requisiciones-voz:requisitions:v1",

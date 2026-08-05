@@ -1,5 +1,5 @@
-const APP_VERSION = "v6";
-const APP_ASSET_QUERY = "v=6";
+const APP_VERSION = "v7";
+const APP_ASSET_QUERY = "v=7";
 const CACHE_PREFIX = "requisiciones-voz-mobile-";
 const CACHE_NAME = `${CACHE_PREFIX}${APP_VERSION}`;
 const ASSETS = [
@@ -7,7 +7,13 @@ const ASSETS = [
   `./index.html?${APP_ASSET_QUERY}`,
   `./styles.css?${APP_ASSET_QUERY}`,
   `./src/app.js?${APP_ASSET_QUERY}`,
+  `./src/catalog.js?${APP_ASSET_QUERY}`,
   `./src/config.js?${APP_ASSET_QUERY}`,
+  `./src/exporters.js?${APP_ASSET_QUERY}`,
+  `./src/parser.js?${APP_ASSET_QUERY}`,
+  `./src/requisitions.js?${APP_ASSET_QUERY}`,
+  `./src/storage.js?${APP_ASSET_QUERY}`,
+  `./src/supabase.js?${APP_ASSET_QUERY}`,
   `./manifest.webmanifest?${APP_ASSET_QUERY}`,
   `./icon.svg?${APP_ASSET_QUERY}`
 ];
