@@ -1,6 +1,6 @@
-import { DEFAULT_CATALOG, normalizeCatalog, normalizeText } from "./catalog.js?v=9";
-import { PUBLIC_APP_CONFIG } from "./config.js?v=9";
-import { createRequisition, normalizeRequisition } from "./requisitions.js?v=9";
+import { DEFAULT_CATALOG, normalizeCatalog, normalizeText } from "./catalog.js?v=10";
+import { PUBLIC_APP_CONFIG } from "./config.js?v=10";
+import { createRequisition, normalizeRequisition } from "./requisitions.js?v=10";
 
 export const STORAGE_KEYS = {
   requisitions: "requisiciones-voz:requisitions:v1",
@@ -116,6 +116,10 @@ export function loadSettings() {
       enabled: shouldSeedIntegration
         ? PUBLIC_APP_CONFIG.supabase.enabled
         : savedSupabase.enabled !== false,
+      autoSync:
+        typeof savedSupabase.autoSync === "boolean"
+          ? savedSupabase.autoSync
+          : PUBLIC_APP_CONFIG.supabase.autoSync !== false,
       integrationVersion: PUBLIC_APP_CONFIG.integrationVersion,
       lastSyncAt: savedSupabase.lastSyncAt || ""
     }

@@ -4,6 +4,7 @@ export const PUBLIC_APP_CONFIG = {
     url: "https://cgfxvrpqcwjafvfcccnj.supabase.co",
     publishableKey: "sb_publishable_pe1NEaytwaY1YD-6p10ePg_2fCWJP-K",
     workspaceId: "main",
-    enabled: true
+    enabled: true,
+    autoSync: true
   }
 };

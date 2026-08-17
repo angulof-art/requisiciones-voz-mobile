@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#0f766e" />
     <meta name="description" content="Aplicación móvil para pedidos y requisiciones por voz." />
     <title>Pedidos por Voz</title>
-    <link rel="manifest" href="./manifest.webmanifest?v=9" />
-    <link rel="icon" href="./icon.svg?v=9" />
-    <link rel="stylesheet" href="./styles.css?v=9" />
+    <link rel="manifest" href="./manifest.webmanifest?v=10" />
+    <link rel="icon" href="./icon.svg?v=10" />
+    <link rel="stylesheet" href="./styles.css?v=10" />
   </head>
   <body>
     <div class="app-shell">
@@ -187,20 +187,36 @@
             </label>
           </div>
 
-          <div class="settings-card">
-            <h3>Supabase</h3>
-            <label>URL del proyecto <input id="supabaseUrl" placeholder="https://proyecto.supabase.co" /></label>
-            <label>Publishable key <input id="supabaseKey" type="password" placeholder="Configurada en la aplicación" /></label>
-            <label>Workspace <input id="supabaseWorkspace" value="main" /></label>
-            <label class="check-row">
-              <input id="supabaseEnabled" type="checkbox" />
-              <span>Activar sincronización</span>
-            </label>
-            <div class="toolbar">
-              <button id="saveSupabaseButton" type="button">Guardar conexión</button>
-              <button class="secondary" id="syncNowButton" type="button">Sincronizar</button>
+          <div class="settings-card cloud-panel">
+            <div class="cloud-heading">
+              <div>
+                <p class="eyebrow">Nube</p>
+                <h3>Supabase</h3>
+              </div>
+              <div class="cloud-status" id="supabaseStatus">Sin configurar</div>
             </div>
-            <p class="hint" id="supabaseMessage">Comprobando conexión.</p>
+            <div class="cloud-grid">
+              <label>URL del proyecto <input id="supabaseUrl" autocomplete="off" placeholder="https://proyecto.supabase.co" /></label>
+              <label>Publishable / anon public key <input id="supabaseKey" autocomplete="off" type="password" placeholder="sb_publishable_..." /></label>
+              <label>Código de operación <input id="supabaseWorkspace" autocomplete="off" value="main" /></label>
+            </div>
+            <div class="cloud-options">
+              <label class="inline-toggle">
+                <input id="supabaseEnabled" type="checkbox" />
+                <span>Activar nube</span>
+              </label>
+              <label class="inline-toggle">
+                <input id="supabaseAutoSync" type="checkbox" />
+                <span>Sincronizar automáticamente</span>
+              </label>
+            </div>
+            <div class="cloud-actions">
+              <button id="saveSupabaseButton" type="button">Guardar conexión</button>
+              <button class="secondary" id="testSupabaseButton" type="button">Probar</button>
+              <button class="secondary" id="uploadSupabaseButton" type="button">Subir local</button>
+              <button class="secondary" id="downloadSupabaseButton" type="button">Descargar nube</button>
+            </div>
+            <p class="cloud-detail" id="supabaseMessage">Comprobando conexión.</p>
             <pre class="technical" id="supabaseTechnical" hidden></pre>
           </div>
         </section>
@@ -227,6 +243,6 @@
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </div>
 
-    <script type="module" src="./src/app.js?v=9"></script>
+    <script type="module" src="./src/app.js?v=10"></script>
   </body>
 </html>

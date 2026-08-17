@@ -3,9 +3,9 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=9";
-import { downloadExcel, printPdf } from "./exporters.js?v=9";
-import { parseRequisitionText } from "./parser.js?v=9";
+} from "./catalog.js?v=10";
+import { downloadExcel, printPdf } from "./exporters.js?v=10";
+import { parseRequisitionText } from "./parser.js?v=10";
 import {
   STATUS,
   addChange,
@@ -23,7 +23,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=9";
+} from "./requisitions.js?v=10";
 import {
   clearCurrentRequisition,
   loadAppState,
@@ -35,7 +35,7 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=9";
+} from "./storage.js?v=10";
 import {
   classifySupabaseError,
   fetchRequisitionsFromSupabase,
@@ -44,7 +44,7 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=9";
+} from "./supabase.js?v=10";
 
 const state = loadAppState();
 const undoStack = [];
@@ -62,6 +62,7 @@ let dictationEndingNormally = false;
 let autoSaveTimer = null;
 let autoSyncTimer = null;
 let supabaseConnectionState = "checking";
+let isCloudSyncing = false;
 
 const els = {
   screenTitle: document.querySelector("#screenTitle"),
@@ -121,8 +122,12 @@ const els = {
   supabaseKey: document.querySelector("#supabaseKey"),
   supabaseWorkspace: document.querySelector("#supabaseWorkspace"),
   supabaseEnabled: document.querySelector("#supabaseEnabled"),
+  supabaseAutoSync: document.querySelector("#supabaseAutoSync"),
+  supabaseStatus: document.querySelector("#supabaseStatus"),
   saveSupabaseButton: document.querySelector("#saveSupabaseButton"),
-  syncNowButton: document.querySelector("#syncNowButton"),
+  testSupabaseButton: document.querySelector("#testSupabaseButton"),
+  uploadSupabaseButton: document.querySelector("#uploadSupabaseButton"),
+  downloadSupabaseButton: document.querySelector("#downloadSupabaseButton"),
   supabaseMessage: document.querySelector("#supabaseMessage"),
   supabaseTechnical: document.querySelector("#supabaseTechnical"),
   networkState: document.querySelector("#networkState"),
@@ -195,7 +200,9 @@ function bindEvents() {
   els.hourFormat.addEventListener("change", saveUiSettings);
   els.textSize.addEventListener("change", saveUiSettings);
   els.saveSupabaseButton.addEventListener("click", saveSupabaseSettingsFromForm);
-  els.syncNowButton.addEventListener("click", syncNow);
+  els.testSupabaseButton.addEventListener("click", testSupabaseConnection);
+  els.uploadSupabaseButton.addEventListener("click", uploadLocalToSupabase);
+  els.downloadSupabaseButton.addEventListener("click", downloadCloudToLocal);
 
   window.addEventListener("online", () => {
     supabaseConnectionState = "checking";
@@ -492,9 +499,14 @@ function scheduleAutoSave() {
 }
 
 function scheduleAutoSync() {
-  if (!navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
+  if (
+    !navigator.onLine ||
+    !state.settings.supabase.autoSync ||
+    !isSupabaseReady(state.settings.supabase) ||
+    isCloudSyncing
+  ) return;
   window.clearTimeout(autoSyncTimer);
-  autoSyncTimer = window.setTimeout(() => performSupabaseSync(true), 900);
+  autoSyncTimer = window.setTimeout(() => performSupabaseSync(true, true), 900);
 }
 
 function startNewOrder() {
@@ -668,35 +680,87 @@ function applySettingsToForm() {
   els.textSize.value = state.settings.textSize || "normal";
   document.body.classList.toggle("text-large", state.settings.textSize === "large");
   els.supabaseUrl.value = state.settings.supabase.url || "";
+  els.supabaseKey.value = state.settings.supabase.publishableKey || "";
   els.supabaseWorkspace.value = state.settings.supabase.workspaceId || "main";
   els.supabaseEnabled.checked = Boolean(state.settings.supabase.enabled);
+  els.supabaseAutoSync.checked = Boolean(state.settings.supabase.autoSync);
 }
 
-function saveSupabaseSettingsFromForm() {
+function saveSupabaseSettingsFromForm(options = {}) {
+  const { announce = true } = options;
   const url = normalizeSupabaseUrl(els.supabaseUrl.value);
   const publishableKey = els.supabaseKey.value.trim() || state.settings.supabase.publishableKey || "";
   const validation = validatePublishableKey(publishableKey);
   if (els.supabaseEnabled.checked && (!url || !validation.ok)) {
     renderSupabaseMessage(validation.message || "Falta la URL de Supabase.", validation.technical);
     toast(validation.message || "Revise la conexión Supabase.");
-    return;
+    supabaseConnectionState = "error";
+    renderConnection();
+    return false;
   }
   state.settings.supabase = {
     url,
     publishableKey: validation.ok ? publishableKey : "",
-    workspaceId: els.supabaseWorkspace.value.trim() || "main",
+    workspaceId: normalizeWorkspaceId(els.supabaseWorkspace.value),
     enabled: els.supabaseEnabled.checked && validation.ok && Boolean(url),
+    autoSync: els.supabaseAutoSync.checked,
+    integrationVersion: state.settings.supabase.integrationVersion,
     lastSyncAt: state.settings.supabase.lastSyncAt || ""
   };
   saveSettings(state.settings);
-  renderSupabaseMessage(state.settings.supabase.enabled ? "Conexión guardada." : "Supabase desactivado.");
+  applySettingsToForm();
+  supabaseConnectionState = state.settings.supabase.enabled ? "checking" : "disabled";
+  if (announce) {
+    renderSupabaseMessage(
+      state.settings.supabase.enabled
+        ? "Conexión guardada. Puede probar, subir datos locales o descargar la nube."
+        : "Supabase queda desactivado hasta que marque Activar nube."
+    );
+  }
   renderConnection();
+  return true;
 }
 
-async function syncNow() {
-  saveSupabaseSettingsFromForm();
+function normalizeWorkspaceId(value) {
+  return String(value || "main")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "main";
+}
+
+async function testSupabaseConnection() {
+  if (!saveSupabaseSettingsFromForm({ announce: false })) return;
   if (!isSupabaseReady(state.settings.supabase)) return;
-  await performSupabaseSync(false);
+  try {
+    setCloudBusy(true);
+    supabaseConnectionState = "checking";
+    renderSupabaseMessage("Probando conexión...");
+    renderConnection();
+    await testSupabase(state.settings.supabase);
+    supabaseConnectionState = "connected";
+    renderSupabaseMessage("Conexión correcta. Supabase respondió correctamente.");
+    renderConnection();
+    toast("Conexión con Supabase verificada.");
+  } catch (error) {
+    handleSupabaseError(error, false);
+  } finally {
+    setCloudBusy(false);
+  }
+}
+
+async function uploadLocalToSupabase() {
+  if (!saveSupabaseSettingsFromForm({ announce: false })) return;
+  if (!isSupabaseReady(state.settings.supabase)) return;
+  await performSupabaseSync(false, false);
+}
+
+async function downloadCloudToLocal() {
+  if (!saveSupabaseSettingsFromForm({ announce: false })) return;
+  if (!isSupabaseReady(state.settings.supabase)) return;
+  await performSupabaseDownload(false);
 }
 
 async function verifySupabaseConnection() {
@@ -706,8 +770,8 @@ async function verifySupabaseConnection() {
     return;
   }
   if (!isSupabaseReady(state.settings.supabase)) {
-    supabaseConnectionState = "error";
-    renderSupabaseMessage("Supabase no está configurado.");
+    supabaseConnectionState = "disabled";
+    renderSupabaseMessage("Supabase está desactivado.");
     renderConnection();
     return;
   }
@@ -715,23 +779,28 @@ async function verifySupabaseConnection() {
     supabaseConnectionState = "checking";
     renderConnection();
     await testSupabase(state.settings.supabase);
-    await refreshHistoryFromSupabase();
+    if (state.settings.supabase.autoSync) await refreshHistoryFromSupabase();
     supabaseConnectionState = "connected";
-    renderSupabaseMessage("Conectado con Supabase.");
+    renderSupabaseMessage(
+      state.settings.supabase.autoSync
+        ? "Conectado. Datos de la nube descargados y combinados."
+        : "Conectado. La sincronización automática está desactivada."
+    );
     renderConnection();
-    if (state.syncQueue.length) scheduleAutoSync();
+    if (state.settings.supabase.autoSync && state.syncQueue.length) scheduleAutoSync();
   } catch (error) {
-    supabaseConnectionState = "error";
-    const classified = classifySupabaseError(error);
-    renderSupabaseMessage(`${classified.label}: ${classified.message}`, classified.technical);
-    renderConnection();
+    handleSupabaseError(error, true);
   }
 }
 
-async function performSupabaseSync(silent = false) {
+async function performSupabaseSync(silent = false, downloadAfter = true) {
   if (!navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
   try {
-    if (!silent) renderSupabaseMessage("Sincronizando...");
+    isCloudSyncing = true;
+    setCloudBusy(true);
+    supabaseConnectionState = "checking";
+    if (!silent) renderSupabaseMessage("Subiendo datos locales...");
+    renderConnection();
     await testSupabase(state.settings.supabase);
     const syncResult = await syncAllToSupabase(
       state.settings.supabase,
@@ -744,7 +813,7 @@ async function performSupabaseSync(silent = false) {
       saveRequisitions(state.requisitions);
       persistCurrent();
     }
-    await refreshHistoryFromSupabase();
+    if (downloadAfter) await refreshHistoryFromSupabase();
     state.settings.supabase.lastSyncAt = new Date().toISOString();
     state.syncQueue = [];
     saveSyncQueue([]);
@@ -755,17 +824,62 @@ async function performSupabaseSync(silent = false) {
     const adjustedNumber = syncResult.renames.at(-1)?.requisitionNumber;
     renderSupabaseMessage(
       adjustedNumber
-        ? `Sincronizado. Número ajustado automáticamente: ${adjustedNumber}.`
-        : "Sincronizado con Supabase."
+        ? `Datos subidos. Número ajustado automáticamente: ${adjustedNumber}.`
+        : downloadAfter
+          ? "Datos locales subidos y datos de la nube combinados."
+          : "Datos locales subidos a Supabase."
     );
     render();
+    if (!silent) toast("Datos locales subidos correctamente.");
   } catch (error) {
-    supabaseConnectionState = "error";
-    const classified = classifySupabaseError(error);
-    renderSupabaseMessage(`${classified.label}: ${classified.message}`, classified.technical);
-    if (!silent) toast(classified.message);
-    renderConnection();
+    handleSupabaseError(error, silent);
+  } finally {
+    isCloudSyncing = false;
+    setCloudBusy(false);
   }
+}
+
+async function performSupabaseDownload(silent = false) {
+  if (!navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
+  try {
+    isCloudSyncing = true;
+    setCloudBusy(true);
+    supabaseConnectionState = "checking";
+    if (!silent) renderSupabaseMessage("Descargando datos de la nube...");
+    renderConnection();
+    await testSupabase(state.settings.supabase);
+    await refreshHistoryFromSupabase();
+    state.settings.supabase.lastSyncAt = new Date().toISOString();
+    saveSettings(state.settings);
+    supabaseConnectionState = "connected";
+    renderSupabaseMessage("Datos descargados y combinados sin borrar datos locales.");
+    render();
+    if (!silent) toast("Historial descargado desde Supabase.");
+  } catch (error) {
+    handleSupabaseError(error, silent);
+  } finally {
+    isCloudSyncing = false;
+    setCloudBusy(false);
+  }
+}
+
+function handleSupabaseError(error, silent = false) {
+  supabaseConnectionState = "error";
+  const classified = classifySupabaseError(error);
+  renderSupabaseMessage(`${classified.label}: ${classified.message}`, classified.technical);
+  if (!silent) toast(classified.message);
+  renderConnection();
+}
+
+function setCloudBusy(busy) {
+  [
+    els.saveSupabaseButton,
+    els.testSupabaseButton,
+    els.uploadSupabaseButton,
+    els.downloadSupabaseButton
+  ].forEach((button) => {
+    button.disabled = busy;
+  });
 }
 
 async function refreshHistoryFromSupabase() {
@@ -1184,12 +1298,24 @@ function renderConnection() {
     connected: "Supabase",
     checking: "Conectando",
     error: "Sin sincronizar",
-    offline: "Sin conexión"
+    offline: "Sin conexión",
+    disabled: "Nube desactivada"
+  };
+  const cloudLabels = {
+    connected: "Conectado",
+    checking: "Comprobando",
+    error: "Error",
+    offline: "Sin conexión",
+    disabled: "Desactivado"
   };
   const currentState = online ? supabaseConnectionState : "offline";
   els.connectionBadge.textContent = labels[currentState] || labels.error;
   els.connectionBadge.classList.toggle("online", currentState === "connected");
   els.connectionBadge.classList.toggle("error", currentState === "error");
+  els.supabaseStatus.textContent = cloudLabels[currentState] || cloudLabels.error;
+  els.supabaseStatus.className = `cloud-status ${
+    currentState === "connected" ? "ready" : currentState
+  }`;
   els.networkState.textContent = labels[currentState] || labels.error;
   els.localCount.textContent = String(state.requisitions.length);
   els.pendingCount.textContent = String(state.syncQueue.length);
@@ -1246,7 +1372,7 @@ function toast(message) {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("./service-worker.js?v=9").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=10").catch(() => {});
   }
 }
 

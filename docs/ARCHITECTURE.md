@@ -26,6 +26,11 @@ conecta el piloto a Supabase. La cola sube cambios automaticamente cuando
 regresa la conexion y la aplicacion descarga y combina los pedidos remotos sin
 sobrescribir borradores locales mas recientes.
 
+La sincronizacion se puede desactivar por dispositivo. La interfaz expone
+operaciones independientes para probar la conexion, subir el estado local y
+descargar el estado remoto; la descarga reutiliza la misma combinacion segura
+del historial y nunca vacia la base local antes de incorporar la nube.
+
 ## Supuestos
 
 - La primera version exporta Excel `.xlsx` real para Excel y conserva CSV para Google Sheets.

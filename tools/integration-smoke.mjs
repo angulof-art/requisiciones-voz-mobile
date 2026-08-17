@@ -17,7 +17,7 @@ import {
   validateRequisition,
   validateRequisitionItem
 } from "../src/requisitions.js";
-import { loadCatalog, STORAGE_KEYS } from "../src/storage.js";
+import { loadCatalog, loadSettings, STORAGE_KEYS } from "../src/storage.js";
 import {
   fetchRequisitionsFromSupabase,
   makeConflictSafeRequisitionNumber,
@@ -131,6 +131,12 @@ storage.set(
 );
 assert.ok(loadCatalog().some((product) => product.code === "VEG-003"));
 assert.equal(loadCatalog().length, 327);
+assert.equal(loadSettings().supabase.autoSync, true);
+storage.set(
+  STORAGE_KEYS.settings,
+  JSON.stringify({ supabase: { enabled: true, autoSync: false } })
+);
+assert.equal(loadSettings().supabase.autoSync, false);
 
 const conflictRequisition = createRequisition([], new Date("2026-08-04T09:15:00-06:00"));
 conflictRequisition.requisitionNumber = "REQ-20260804-0001";

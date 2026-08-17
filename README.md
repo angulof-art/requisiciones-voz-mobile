@@ -92,6 +92,18 @@ pnpm run catalog:sync
 5. Para produccion, configura Supabase Auth y retira la migracion `dev_anon`.
    Esa segunda migracion es para demo/piloto, no para datos sensibles.
 
+La pantalla **Configuracion** permite activar o desactivar la nube y controlar
+la sincronizacion automatica. Sus acciones manuales son deliberadamente
+separadas:
+
+- **Probar** verifica la conexion sin mover pedidos.
+- **Subir local** envia el catalogo y los pedidos guardados en el dispositivo.
+- **Descargar nube** combina el historial remoto con el local sin borrar datos
+  del dispositivo.
+
+El codigo de operacion funciona como espacio de trabajo. Los dispositivos que
+deban compartir pedidos tienen que usar exactamente el mismo codigo.
+
 ## Despliegue
 
 Puede publicarse como sitio estatico en GitHub Pages, Netlify, Vercel, Supabase
