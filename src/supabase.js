@@ -1,3 +1,5 @@
+import { normalizeRequisition } from "./requisitions.js?v=9";
+
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
 
@@ -100,6 +102,62 @@ export async function syncAllToSupabase(settings, requisitions, catalog) {
     if (result.rename) renames.push(result.rename);
   }
   return { renames };
+}
+
+export async function fetchRequisitionsFromSupabase(settings) {
+  if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
+  const workspaceId = settings.workspaceId || "main";
+  const requisitions = await supabaseRequest(settings, "requisitions", {
+    query: [
+      "select=*",
+      `workspace_id=eq.${encodeURIComponent(workspaceId)}`,
+      "order=updated_at.desc",
+      "limit=500"
+    ].join("&")
+  });
+  if (!Array.isArray(requisitions) || !requisitions.length) return [];
+
+  const requisitionIds = new Set(requisitions.map((row) => row.id));
+  const requisitionFilter = encodeURIComponent(`(${[...requisitionIds].join(",")})`);
+  const [items, changes] = await Promise.all([
+    supabaseRequest(settings, "requisition_items", {
+      query: [
+        "select=*",
+        `requisition_id=in.${requisitionFilter}`,
+        "order=sort_order.asc",
+        "limit=5000"
+      ].join("&")
+    }),
+    supabaseRequest(settings, "requisition_changes", {
+      query: [
+        "select=*",
+        `workspace_id=eq.${encodeURIComponent(workspaceId)}`,
+        "order=changed_at.desc",
+        "limit=5000"
+      ].join("&")
+    })
+  ]);
+
+  const itemsByRequisition = groupRowsByRequisition(items, requisitionIds);
+  const changesByRequisition = groupRowsByRequisition(changes, requisitionIds);
+  return requisitions.map((row) =>
+    normalizeRequisition({
+      ...row,
+      items: itemsByRequisition.get(row.id) || [],
+      changes: changesByRequisition.get(row.id) || [],
+      syncStatus: "synced"
+    })
+  );
+}
+
+function groupRowsByRequisition(rows, allowedIds) {
+  const grouped = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!allowedIds.has(row.requisition_id)) continue;
+    if (!grouped.has(row.requisition_id)) grouped.set(row.requisition_id, []);
+    grouped.get(row.requisition_id).push(row);
+  }
+  return grouped;
 }
 
 export function makeConflictSafeRequisitionNumber(requisition, now = new Date(), attempt = 0) {

@@ -3,9 +3,9 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=8";
-import { downloadExcel, printPdf } from "./exporters.js?v=8";
-import { parseRequisitionText } from "./parser.js?v=8";
+} from "./catalog.js?v=9";
+import { downloadExcel, printPdf } from "./exporters.js?v=9";
+import { parseRequisitionText } from "./parser.js?v=9";
 import {
   STATUS,
   addChange,
@@ -15,13 +15,15 @@ import {
   createRequisition,
   findDuplicateGroups,
   formatDateParts,
+  isMeaningfulRequisition,
   markConfirmed,
   markExported,
   markVoided,
+  mergeRequisitionHistories,
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=8";
+} from "./requisitions.js?v=9";
 import {
   clearCurrentRequisition,
   loadAppState,
@@ -33,15 +35,16 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=8";
+} from "./storage.js?v=9";
 import {
   classifySupabaseError,
+  fetchRequisitionsFromSupabase,
   isSupabaseReady,
   normalizeSupabaseUrl,
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=8";
+} from "./supabase.js?v=9";
 
 const state = loadAppState();
 const undoStack = [];
@@ -50,6 +53,12 @@ let isListening = false;
 let replaceIndex = null;
 let speechSessionBaseText = "";
 let speechSessionFinalText = "";
+let dictationSessionActive = false;
+let dictationDeadline = 0;
+let dictationStopTimer = null;
+let recognitionRestartTimer = null;
+let dictationStartingItemCount = 0;
+let dictationEndingNormally = false;
 let autoSaveTimer = null;
 let autoSyncTimer = null;
 let supabaseConnectionState = "checking";
@@ -86,7 +95,7 @@ const els = {
   confirmButton: document.querySelector("#confirmButton"),
   exportPdfButton: document.querySelector("#exportPdfButton"),
   exportCsvButton: document.querySelector("#exportCsvButton"),
-  newOrderButton: document.querySelector("#newOrderButton"),
+  newOrderButtons: document.querySelectorAll("[data-new-order]"),
   historySearch: document.querySelector("#historySearch"),
   historyStatus: document.querySelector("#historyStatus"),
   historyDate: document.querySelector("#historyDate"),
@@ -161,7 +170,7 @@ function bindEvents() {
   els.confirmButton.addEventListener("click", confirmOrder);
   els.exportPdfButton.addEventListener("click", exportPdf);
   els.exportCsvButton.addEventListener("click", exportCsv);
-  els.newOrderButton.addEventListener("click", startNewOrder);
+  els.newOrderButtons.forEach((button) => button.addEventListener("click", startNewOrder));
 
   ["input", "change"].forEach((eventName) => {
     els.itemsList.addEventListener(eventName, handleItemEdit);
@@ -489,16 +498,38 @@ function scheduleAutoSync() {
 }
 
 function startNewOrder() {
-  if (state.current.items.length && !window.confirm("¿Descartar el pedido actual y crear uno nuevo?")) {
-    return;
-  }
+  cancelDictationSession();
+  const previousWasSaved = preserveCurrentOrder();
   clearCurrentRequisition();
   state.current = createRequisition(state.requisitions);
+  undoStack.length = 0;
+  replaceIndex = null;
   els.transcriptInput.value = "";
   els.lastTranscript.hidden = true;
   persistCurrent();
   render();
   navigate("new");
+  els.requestedBy.focus();
+  if (previousWasSaved) scheduleAutoSync();
+  toast(
+    previousWasSaved
+      ? "Pedido anterior guardado en el historial. Nuevo pedido listo."
+      : "Nuevo pedido listo."
+  );
+}
+
+function preserveCurrentOrder() {
+  state.current.requestedBy = els.requestedBy.value.trim();
+  if (!isMeaningfulRequisition(state.current)) return false;
+  state.current.updatedAt = new Date().toISOString();
+  if (!["confirmed", "exported", "voided"].includes(state.current.status)) {
+    state.current.status = state.current.items.some((item) => item.needsReview) ? "review" : "draft";
+  }
+  state.requisitions = upsertRequisition(state.current);
+  state.syncQueue = queueSyncChange("requisition", { id: state.current.id });
+  state.recentNames = rememberName(state.current.requestedBy);
+  persistCurrent();
+  return true;
 }
 
 function importCatalog(event) {
@@ -581,30 +612,46 @@ function handleHistoryAction(event) {
   const requisition = state.requisitions.find((entry) => entry.id === button.dataset.id);
   if (!requisition) return;
   if (button.dataset.action === "open") {
+    cancelDictationSession();
+    if (state.current.id !== requisition.id) preserveCurrentOrder();
     state.current = clone(requisition);
-    els.transcriptInput.value = state.current.originalTranscript || "";
+    els.transcriptInput.value = "";
+    undoStack.length = 0;
+    replaceIndex = null;
     persistCurrent();
     render();
     navigate("new");
+    toast(["draft", "review"].includes(requisition.status) ? "Borrador abierto." : "Pedido abierto.");
   }
   if (button.dataset.action === "duplicate") {
+    cancelDictationSession();
+    preserveCurrentOrder();
     const copy = createRequisition(state.requisitions);
     copy.requestedBy = requisition.requestedBy;
     copy.items = requisition.items.map((item) => ({ ...clone(item), id: createId("item") }));
     copy.originalTranscript = requisition.originalTranscript;
     addChange(copy, "duplicar_pedido", requisition, copy);
     state.current = copy;
+    state.requisitions = upsertRequisition(copy);
+    state.syncQueue = queueSyncChange("requisition", { id: copy.id });
+    els.transcriptInput.value = "";
+    undoStack.length = 0;
+    replaceIndex = null;
     persistCurrent();
     render();
     navigate("new");
     toast("Pedido duplicado como borrador.");
+    scheduleAutoSync();
   }
   if (button.dataset.action === "void") {
     if (!window.confirm("¿Anular este pedido sin eliminarlo definitivamente?")) return;
     markVoided(requisition);
     state.requisitions = upsertRequisition(requisition);
+    state.syncQueue = queueSyncChange("requisition", { id: requisition.id });
+    saveSyncQueue(state.syncQueue);
     renderHistory();
     toast("Pedido anulado.");
+    scheduleAutoSync();
   }
 }
 
@@ -668,6 +715,7 @@ async function verifySupabaseConnection() {
     supabaseConnectionState = "checking";
     renderConnection();
     await testSupabase(state.settings.supabase);
+    await refreshHistoryFromSupabase();
     supabaseConnectionState = "connected";
     renderSupabaseMessage("Conectado con Supabase.");
     renderConnection();
@@ -696,6 +744,7 @@ async function performSupabaseSync(silent = false) {
       saveRequisitions(state.requisitions);
       persistCurrent();
     }
+    await refreshHistoryFromSupabase();
     state.settings.supabase.lastSyncAt = new Date().toISOString();
     state.syncQueue = [];
     saveSyncQueue([]);
@@ -719,6 +768,27 @@ async function performSupabaseSync(silent = false) {
   }
 }
 
+async function refreshHistoryFromSupabase() {
+  const remoteRequisitions = await fetchRequisitionsFromSupabase(state.settings.supabase);
+  const pendingIds = state.syncQueue
+    .filter((entry) => entry.type === "requisition" && entry.payload?.id)
+    .map((entry) => entry.payload.id);
+  const merged = mergeRequisitionHistories(state.requisitions, remoteRequisitions, pendingIds);
+  const currentVersion = merged.find((entry) => entry.id === state.current.id);
+  const currentIsPending = pendingIds.includes(state.current.id);
+  if (
+    currentVersion &&
+    !currentIsPending &&
+    new Date(currentVersion.updatedAt).getTime() > new Date(state.current.updatedAt).getTime()
+  ) {
+    state.current = clone(currentVersion);
+    persistCurrent();
+  }
+  state.requisitions = merged;
+  saveRequisitions(state.requisitions);
+  renderHistory();
+}
+
 function setupSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
@@ -730,24 +800,38 @@ function setupSpeechRecognition() {
   }
   recognition = new SpeechRecognition();
   recognition.lang = "es-CR";
-  recognition.continuous = false;
+  recognition.continuous = true;
   recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
   recognition.onstart = () => {
     isListening = true;
-    speechSessionBaseText = "";
-    speechSessionFinalText = "";
     els.voiceButton.classList.add("listening");
     els.voiceButton.setAttribute("aria-pressed", "true");
     els.voicePrimary.textContent = "Escuchando";
     els.voiceSecondary.textContent = "Toque para detener";
-    els.speechStatus.textContent = "Escuchando...";
+    els.speechStatus.textContent = "Escuchando... puede dictar varios productos.";
   };
   recognition.onerror = (event) => {
-    els.speechStatus.textContent = `Error de micrófono: ${event.error || "desconocido"}.`;
+    const error = event.error || "desconocido";
+    if (error === "no-speech" && dictationSessionActive) {
+      els.speechStatus.textContent = "Sigo escuchando... continúe con el pedido.";
+      return;
+    }
+    if (error === "aborted" && !dictationSessionActive) return;
+    els.speechStatus.textContent = `Error de micrófono: ${error}.`;
+    dictationSessionActive = false;
+    clearDictationTimers();
     stopSpeechUi();
   };
   recognition.onend = () => {
-    stopSpeechUi();
+    isListening = false;
+    if (dictationSessionActive && Date.now() < dictationDeadline) {
+      els.speechStatus.textContent = "Pausa detectada. Sigo escuchando...";
+      window.clearTimeout(recognitionRestartTimer);
+      recognitionRestartTimer = window.setTimeout(startRecognitionChunk, 250);
+      return;
+    }
+    finishDictationSession();
   };
   recognition.onresult = (event) => {
     let finalText = "";
@@ -824,16 +908,89 @@ function stripLeadingConjunction(value) {
 
 function toggleSpeech() {
   if (!recognition) return;
+  if (dictationSessionActive) {
+    stopDictationSession();
+    return;
+  }
+  dictationSessionActive = true;
+  dictationEndingNormally = false;
+  dictationDeadline = Date.now() + 45000;
+  dictationStartingItemCount = state.current.items.length;
+  speechSessionBaseText = "";
+  speechSessionFinalText = "";
+  els.transcriptInput.value = replaceIndex === null ? els.transcriptInput.value : "";
+  clearDictationTimers();
+  dictationStopTimer = window.setTimeout(stopDictationSession, 45000);
+  startRecognitionChunk();
+}
+
+function startRecognitionChunk() {
+  if (!dictationSessionActive || Date.now() >= dictationDeadline) {
+    finishDictationSession();
+    return;
+  }
+  try {
+    recognition.start();
+  } catch (error) {
+    if (error.name === "InvalidStateError") return;
+    dictationSessionActive = false;
+    clearDictationTimers();
+    stopSpeechUi();
+    els.speechStatus.textContent = error.message;
+  }
+}
+
+function stopDictationSession() {
+  const wasActive = dictationSessionActive || isListening;
+  if (wasActive) dictationEndingNormally = true;
+  dictationSessionActive = false;
+  clearDictationTimers();
   if (isListening) {
-    recognition.stop();
-  } else {
     try {
-      els.transcriptInput.value = replaceIndex === null ? els.transcriptInput.value : "";
-      recognition.start();
-    } catch (error) {
-      els.speechStatus.textContent = error.message;
+      recognition.stop();
+    } catch {
+      finishDictationSession();
+    }
+  } else if (wasActive) {
+    finishDictationSession();
+  }
+}
+
+function cancelDictationSession() {
+  dictationSessionActive = false;
+  dictationEndingNormally = false;
+  clearDictationTimers();
+  speechSessionFinalText = "";
+  if (isListening) {
+    try {
+      recognition.abort();
+    } catch {
+      // The browser already closed the recognition session.
     }
   }
+  stopSpeechUi();
+}
+
+function finishDictationSession() {
+  const wasActive = dictationSessionActive || isListening;
+  const shouldSummarize = wasActive || dictationEndingNormally || Boolean(speechSessionFinalText);
+  dictationSessionActive = false;
+  dictationEndingNormally = false;
+  isListening = false;
+  clearDictationTimers();
+  stopSpeechUi();
+  if (!shouldSummarize) return;
+  const added = Math.max(0, state.current.items.length - dictationStartingItemCount);
+  els.speechStatus.textContent = added
+    ? `Dictado finalizado: ${added} ${added === 1 ? "producto agregado" : "productos agregados"}.`
+    : "Dictado finalizado. No se agregó ningún producto.";
+}
+
+function clearDictationTimers() {
+  window.clearTimeout(dictationStopTimer);
+  window.clearTimeout(recognitionRestartTimer);
+  dictationStopTimer = null;
+  recognitionRestartTimer = null;
 }
 
 function stopSpeechUi() {
@@ -946,10 +1103,18 @@ function renderHistory() {
     const matchesStatus = status === "all" || req.status === status;
     const matchesDate = !date || isoDate === date || created.date.split("/").reverse().join("-") === date;
     return matchesText && matchesStatus && matchesDate;
-  });
+  }).sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt));
   els.historyList.innerHTML = "";
   rows.forEach((req) => {
     const created = formatDateParts(req.createdAt, state.settings.hourFormat);
+    const updated = formatDateParts(req.updatedAt, state.settings.hourFormat);
+    const productNames = req.items
+      .slice(0, 3)
+      .map((item) => item.productName)
+      .filter(Boolean)
+      .join(", ");
+    const remainingProducts = Math.max(0, req.items.length - 3);
+    const actionLabel = ["draft", "review"].includes(req.status) ? "Continuar" : "Ver";
     const card = document.createElement("article");
     card.className = "history-card";
     card.innerHTML = `
@@ -957,14 +1122,16 @@ function renderHistory() {
         <div>
           <div class="history-title">${escapeHtml(req.requisitionNumber)}</div>
           <div class="meta-line">
-            <span>${escapeHtml(req.requestedBy)}</span>
-            <span>${created.date} ${created.time}</span>
+            <span>${escapeHtml(req.requestedBy || "Sin responsable")}</span>
+            <span>${req.items.length} ${req.items.length === 1 ? "producto" : "productos"}</span>
             <span>${STATUS[req.status] || req.status}</span>
           </div>
         </div>
       </div>
+      <p class="history-products">${escapeHtml(productNames || "Sin productos")}${remainingProducts ? ` y ${remainingProducts} más` : ""}</p>
+      <p class="history-date">Creado ${created.date} ${created.time} · Actualizado ${updated.date} ${updated.time}</p>
       <div class="card-actions">
-        <button type="button" data-action="open" data-id="${escapeHtml(req.id)}">Abrir</button>
+        <button type="button" data-action="open" data-id="${escapeHtml(req.id)}">${actionLabel}</button>
         <button class="secondary" type="button" data-action="duplicate" data-id="${escapeHtml(req.id)}">Duplicar</button>
         <button class="danger" type="button" data-action="void" data-id="${escapeHtml(req.id)}">Anular</button>
       </div>
@@ -1079,7 +1246,7 @@ function toast(message) {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("./service-worker.js?v=8").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=9").catch(() => {});
   }
 }
 

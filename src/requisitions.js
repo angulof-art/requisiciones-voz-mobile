@@ -1,4 +1,4 @@
-import { productAllowsUnit } from "./catalog.js?v=8";
+import { productAllowsUnit } from "./catalog.js?v=9";
 
 export const STATUS = {
   draft: "Borrador",
@@ -58,6 +58,37 @@ export function normalizeRequisition(requisition) {
     syncStatus: requisition.syncStatus || "local",
     deviceInfo: requisition.deviceInfo || requisition.device_info || getDeviceInfo()
   };
+}
+
+export function isMeaningfulRequisition(requisition) {
+  return Boolean(
+    String(requisition?.requestedBy || "").trim() ||
+      String(requisition?.originalTranscript || "").trim() ||
+      requisition?.items?.length
+  );
+}
+
+export function mergeRequisitionHistories(local = [], remote = [], preferLocalIds = []) {
+  const preferred = new Set(preferLocalIds);
+  const merged = new Map();
+
+  for (const requisition of remote) {
+    const normalized = normalizeRequisition({ ...requisition, syncStatus: "synced" });
+    merged.set(normalized.id, normalized);
+  }
+
+  for (const requisition of local) {
+    const normalized = normalizeRequisition(requisition);
+    const cloudVersion = merged.get(normalized.id);
+    const localIsNewer =
+      !cloudVersion ||
+      new Date(normalized.updatedAt).getTime() >= new Date(cloudVersion.updatedAt).getTime();
+    if (preferred.has(normalized.id) || localIsNewer) merged.set(normalized.id, normalized);
+  }
+
+  return [...merged.values()].sort(
+    (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+  );
 }
 
 export function normalizeItem(item) {

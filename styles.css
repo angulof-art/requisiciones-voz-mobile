@@ -258,6 +258,7 @@ h2 {
 
 .panel-heading,
 .request-summary,
+.summary-actions,
 .toolbar,
 .card-actions,
 .items-heading,
@@ -272,8 +273,27 @@ h2 {
 
 .toolbar,
 .card-actions,
-.export-actions {
+.export-actions,
+.summary-actions {
   flex-wrap: wrap;
+}
+
+.summary-actions {
+  justify-content: flex-end;
+}
+
+.new-order-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.38rem;
+  min-width: max-content;
+}
+
+.new-order-button > span {
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 1;
 }
 
 .dictation-composer {
@@ -487,6 +507,18 @@ h2 {
   border-radius: 999px;
   padding: 0.22rem 0.45rem;
   background: var(--surface-2);
+}
+
+.history-products,
+.history-date {
+  margin: 0.55rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.history-date {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
 }
 
 .item-card .card-actions {

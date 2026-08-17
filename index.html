@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#0f766e" />
     <meta name="description" content="Aplicación móvil para pedidos y requisiciones por voz." />
     <title>Pedidos por Voz</title>
-    <link rel="manifest" href="./manifest.webmanifest?v=8" />
-    <link rel="icon" href="./icon.svg?v=8" />
-    <link rel="stylesheet" href="./styles.css?v=8" />
+    <link rel="manifest" href="./manifest.webmanifest?v=9" />
+    <link rel="icon" href="./icon.svg?v=9" />
+    <link rel="stylesheet" href="./styles.css?v=9" />
   </head>
   <body>
     <div class="app-shell">
@@ -27,7 +27,13 @@
               <p class="eyebrow">Requisición</p>
               <h2 id="requisitionNumber">REQ</h2>
             </div>
-            <span class="state-badge" id="statusBadge">Borrador</span>
+            <div class="summary-actions">
+              <span class="state-badge" id="statusBadge">Borrador</span>
+              <button class="secondary new-order-button" data-new-order type="button">
+                <span aria-hidden="true">+</span>
+                Nuevo pedido
+              </button>
+            </div>
           </div>
 
           <div class="responsible-block compact-block">
@@ -104,7 +110,10 @@
         <section class="screen" id="screen-history" data-screen="history" aria-labelledby="historyTitle">
           <div class="panel-heading">
             <h2 id="historyTitle">Historial de pedidos</h2>
-            <button id="newOrderButton" type="button">Nuevo</button>
+            <button class="new-order-button" data-new-order type="button">
+              <span aria-hidden="true">+</span>
+              Nuevo pedido
+            </button>
           </div>
           <div class="filters">
             <input id="historySearch" placeholder="Buscar número o responsable" />
@@ -218,6 +227,6 @@
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </div>
 
-    <script type="module" src="./src/app.js?v=8"></script>
+    <script type="module" src="./src/app.js?v=9"></script>
   </body>
 </html>

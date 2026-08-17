@@ -5,15 +5,19 @@ Aplicacion web movil para crear pedidos o requisiciones por voz.
 ## Funciones incluidas
 
 - Responsable obligatorio antes de confirmar o exportar.
-- Reconocimiento de voz en espanol de Costa Rica cuando el navegador lo soporte.
+- Reconocimiento de voz en espanol de Costa Rica con sesiones continuas de hasta
+  45 segundos para dictar varios productos y tolerar pausas naturales.
 - Cada dictado se interpreta y agrega directamente al pedido, sin un paso de aceptacion.
 - Parser de productos, cantidades, unidades y observaciones.
 - Pantalla unica mobile-first con boton de voz compacto y lineas editables.
 - Agregar, eliminar, duplicar, redictar, combinar duplicados y deshacer.
-- Guardado automatico local y sincronizacion en segundo plano.
+- Boton `Nuevo pedido` que conserva el pedido anterior como borrador antes de
+  iniciar una requisicion limpia.
+- Guardado automatico local y sincronizacion bidireccional con Supabase.
 - Confirmar, exportar y anular sin borrar historial.
 - Numeracion diaria tipo `REQ-20260803-0001`.
-- Historial con busqueda, filtros, duplicado y reapertura de borradores.
+- Historial combinado local/Supabase con busqueda, filtros, resumen de productos,
+  duplicado y reapertura de borradores.
 - Catalogo importable por CSV.
 - Catalogo maestro inicial de 327 productos habituales del restaurante, sin
   nombres ni codigos duplicados y con sinonimos para reconocimiento de voz.

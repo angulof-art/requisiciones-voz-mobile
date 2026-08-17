@@ -10,18 +10,21 @@ externos, pruebas con Node y migraciones SQL separadas.
 
 - `src/parser.js`: convierte dictado en lineas estructuradas.
 - `src/catalog.js`: catalogo maestro, unidades y coincidencias.
-- `src/requisitions.js`: pedidos, validaciones, numeracion y cambios.
+- `src/requisitions.js`: pedidos, validaciones, numeracion, cambios y combinacion
+  segura del historial local/remoto.
 - `src/storage.js`: persistencia local y cola de sincronizacion.
 - `src/exporters.js`: PDF imprimible, Excel `.xlsx` y CSV compatible con Google Sheets.
 - `src/config.js`: configuracion publica del proyecto Supabase del piloto.
-- `src/supabase.js`: REST seguro con publishable key, sin secretos.
+- `src/supabase.js`: REST seguro con publishable key, sin secretos, con carga y
+  descarga del historial.
 - `src/app.js`: UI, voz, edicion, historial, catalogo y configuracion.
 
 ## Datos
 
 La fuente local permite uso sin conexion. La configuracion publica incluida
-conecta el piloto a Supabase y la cola se sincroniza automaticamente cuando
-regresa la conexion.
+conecta el piloto a Supabase. La cola sube cambios automaticamente cuando
+regresa la conexion y la aplicacion descarga y combina los pedidos remotos sin
+sobrescribir borradores locales mas recientes.
 
 ## Supuestos
 

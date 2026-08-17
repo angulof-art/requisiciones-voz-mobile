@@ -10,13 +10,16 @@ import { parseRequisitionText } from "../src/parser.js";
 import {
   addChange,
   createRequisition,
+  isMeaningfulRequisition,
   markConfirmed,
+  mergeRequisitionHistories,
   normalizeRequisition,
   validateRequisition,
   validateRequisitionItem
 } from "../src/requisitions.js";
 import { loadCatalog, STORAGE_KEYS } from "../src/storage.js";
 import {
+  fetchRequisitionsFromSupabase,
   makeConflictSafeRequisitionNumber,
   syncAllToSupabase,
   syncRequisitionToSupabase
@@ -83,6 +86,27 @@ assert.ok(pdfHtml.includes("window.print"));
 const invalid = createRequisition([requisition]);
 invalid.items = parsed.items;
 assert.equal(validateRequisition(invalid, catalog, "confirm").ok, false);
+assert.equal(isMeaningfulRequisition(invalid), true);
+assert.equal(isMeaningfulRequisition(createRequisition([])), false);
+
+const localHistory = createRequisition([], new Date("2026-08-10T12:00:00Z"));
+localHistory.requestedBy = "Pedido local";
+localHistory.updatedAt = "2026-08-10T13:00:00Z";
+const remoteHistory = normalizeRequisition({
+  ...localHistory,
+  requestedBy: "Pedido remoto anterior",
+  updatedAt: "2026-08-10T12:30:00Z"
+});
+const cloudOnlyHistory = createRequisition([localHistory], new Date("2026-08-11T12:00:00Z"));
+cloudOnlyHistory.requestedBy = "Solo nube";
+const mergedHistory = mergeRequisitionHistories(
+  [localHistory],
+  [remoteHistory, cloudOnlyHistory],
+  [localHistory.id]
+);
+assert.equal(mergedHistory.length, 2);
+assert.equal(mergedHistory.find((entry) => entry.id === localHistory.id).requestedBy, "Pedido local");
+assert.equal(mergedHistory[0].id, cloudOnlyHistory.id);
 
 const compact = createRequisition([]);
 compact.requestedBy = "Historial";
@@ -177,5 +201,53 @@ assert.equal(
   ).length,
   1
 );
+
+globalThis.fetch = async (url) => {
+  const requestUrl = String(url);
+  if (requestUrl.includes("/requisitions?")) {
+    return new Response(
+      JSON.stringify([
+        {
+          id: "req-cloud-history",
+          workspace_id: "main",
+          requisition_number: "REQ-20260812-0001",
+          requested_by: "Chef nube",
+          status: "confirmed",
+          original_transcript: "2 kg de tomate",
+          created_at: "2026-08-12T12:00:00Z",
+          updated_at: "2026-08-12T12:05:00Z"
+        }
+      ]),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  if (requestUrl.includes("/requisition_items?")) {
+    return new Response(
+      JSON.stringify([
+        {
+          id: "item-cloud-history",
+          requisition_id: "req-cloud-history",
+          product_name: "Tomate",
+          quantity: 2,
+          unit: "kg",
+          sort_order: 0
+        }
+      ]),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+};
+const downloadedHistory = await fetchRequisitionsFromSupabase({
+  enabled: true,
+  url: "https://example.supabase.co",
+  publishableKey: "sb_publishable_test",
+  workspaceId: "main"
+});
+globalThis.fetch = originalFetch;
+assert.equal(downloadedHistory.length, 1);
+assert.equal(downloadedHistory[0].requestedBy, "Chef nube");
+assert.equal(downloadedHistory[0].items[0].productName, "Tomate");
+assert.equal(downloadedHistory[0].syncStatus, "synced");
 
 console.log("Integration smoke OK");
