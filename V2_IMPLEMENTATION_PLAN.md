@@ -213,6 +213,8 @@ Detalles operativos: `docs/LOCAL_STORAGE_MIGRATION.md`.
 
 ### Fase 3 - Auth y multiorganizacion
 
+Estado: implementacion y backfill completados; validacion real y corte anonimo pendientes.
+
 Supabase Auth, perfiles, organizaciones, ubicaciones, departamentos, roles,
 backfill V10, RLS de aislamiento y retiro de anon.
 

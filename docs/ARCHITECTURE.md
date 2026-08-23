@@ -20,6 +20,10 @@ externos, pruebas con Node y migraciones SQL separadas.
 - `src/version.js`: version visible y referencia unica para cache busting.
 - `src/supabase.js`: REST seguro con publishable key, sin secretos, con carga y
   descarga del historial.
+- `src/auth/client.js`: cliente Supabase Auth fijado y configurado para PWA.
+- `src/auth/session.js`: login, restauracion, renovacion, expiracion y logout.
+- `src/auth/context.js`: perfil, organizacion, sede, departamento, roles y permisos.
+- `src/auth/permissions.js`: controles de capacidad y filtro local equivalente a RLS.
 - `src/app.js`: UI, voz, edicion, historial, catalogo y configuracion.
 
 ## Datos
@@ -30,10 +34,16 @@ copia por ID, verifica conteos y solo despues marca su finalizacion. Si IndexedD
 no esta disponible, la fachada entra en modo compatibilidad y propaga cualquier
 fallo de escritura a la interfaz.
 
-La configuracion publica incluida
-conecta el piloto a Supabase. La cola sube cambios automaticamente cuando
+La configuracion publica incluida conecta la app a Supabase. Las llamadas de
+datos usan el access token del usuario y RLS aplica el contexto organizacional.
+La cola sube cambios automaticamente cuando
 regresa la conexion y la aplicacion descarga y combina los pedidos remotos sin
 sobrescribir borradores locales mas recientes.
+
+IndexedDB version 2 agrega contexto autenticado e indices de organizacion y
+usuario. El pedido actual usa una clave por usuario y organizacion. La cola
+preserva entradas de otras sesiones, pero solo sincroniza las del contexto
+activo.
 
 La cola vive en IndexedDB, consolida actualizaciones redundantes de una misma
 entidad y registra intentos, ultimo error y proximo reintento con backoff. El

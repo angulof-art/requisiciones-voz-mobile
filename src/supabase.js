@@ -92,10 +92,12 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog) 
     requisition.items.map((item, index) => itemToRow(item, requisition.id, index))
   );
   if (requisition.changes?.length) {
-    await upsertRows(
+    await insertAuditRows(
       settings,
       "requisition_changes",
-      requisition.changes.map((change) => changeToRow(change, requisition.id, workspaceId))
+      requisition.changes
+        .filter((change) => !change.changedByUserId || change.changedByUserId === activeContext?.userId)
+        .map((change) => changeToRow(change, requisition.id, workspaceId))
     );
   }
   return { rename };
@@ -265,6 +267,16 @@ async function upsertRows(settings, table, rows) {
     method: "POST",
     query: "on_conflict=id",
     prefer: "resolution=merge-duplicates,return=minimal",
+    body: rows
+  });
+}
+
+async function insertAuditRows(settings, table, rows) {
+  if (!rows.length) return;
+  await supabaseRequest(settings, table, {
+    method: "POST",
+    query: "on_conflict=id",
+    prefer: "resolution=ignore-duplicates,return=minimal",
     body: rows
   });
 }

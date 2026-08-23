@@ -30,6 +30,9 @@ migracion segura esta en `V2_IMPLEMENTATION_PLAN.md`.
   `Unidad de compra`.
 - CSV compatible con Google Sheets disponible desde el modulo de exportacion.
 - PWA offline con indicador de conexion y cola de sincronizacion.
+- Inicio de sesion por correo y contraseña con restauracion segura de sesion.
+- Organizaciones, sedes, departamentos y permisos por rol protegidos con RLS.
+- Perfil operativo y aislamiento local por usuario/organizacion.
 - Aviso de nueva version, actualizacion controlada e instalacion cuando el
   navegador ofrece PWA instalable.
 - Migracion SQL para Supabase.
@@ -98,14 +101,12 @@ pnpm run catalog:sync
 
 ## Supabase
 
-1. Ejecuta `supabase/migrations/202608030001_requisitions.sql`.
-2. Para una prueba funcional sin login, ejecuta tambien
-   `supabase/migrations/202608030002_dev_anon_requisitions.sql`.
-3. La version publicada incluye la URL y la publishable key publica del proyecto
-   de demostracion en `src/config.js`.
-4. No uses `service_role`, `sb_secret_` ni credenciales privadas.
-5. Para produccion, configura Supabase Auth y retira la migracion `dev_anon`.
-   Esa segunda migracion es para demo/piloto, no para datos sensibles.
+1. Aplica las migraciones de `supabase/migrations` en orden.
+2. Crea el primer administrador siguiendo `docs/ADMIN_BOOTSTRAP.md`.
+3. La URL y publishable key publica estan en `src/config.js`.
+4. No uses `service_role`, `sb_secret_` ni credenciales privadas en frontend.
+5. Ejecuta la matriz de `docs/AUTH_AND_RLS.md` antes de aplicar
+   `202608220008_disable_demo_anon_access.sql`.
 
 La pantalla **Configuracion** permite activar o desactivar la nube y controlar
 la sincronizacion automatica. Sus acciones manuales son deliberadamente
@@ -116,8 +117,8 @@ separadas:
 - **Descargar nube** combina el historial remoto con el local sin borrar datos
   del dispositivo.
 
-El codigo de operacion funciona como espacio de trabajo. Los dispositivos que
-deban compartir pedidos tienen que usar exactamente el mismo codigo.
+`workspace_id` se conserva solo por compatibilidad V10. La autorizacion usa
+organizacion, sede, departamento, membresias y roles.
 
 ## Despliegue
 
@@ -137,9 +138,9 @@ raiz publica.
 - Importacion XLSX nativa.
 - Firma digital del receptor.
 
-## Seguridad del piloto
+## Seguridad y recuperacion
 
-La sincronizacion publicada todavia utiliza la migracion anon de demostracion.
-No debe usarse con datos reales de varias organizaciones. Supabase Auth, el
-backfill de los datos V10 y el retiro coordinado de esas politicas corresponden
-a la Fase 3 documentada en `V2_IMPLEMENTATION_PLAN.md`.
+El modelo y el backfill se documentan en `docs/V10_REMOTE_MIGRATION.md`. Las
+politicas, matriz y aislamiento estan en `docs/AUTH_AND_RLS.md`. El acceso anon
+solo debe retirarse despues de probar usuarios reales; el rollback temporal se
+describe en `docs/AUTH_ROLLBACK.md`.

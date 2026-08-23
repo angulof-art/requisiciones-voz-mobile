@@ -22,6 +22,7 @@ const ownRequest = makeRequisition({ requestedByUserId: requester.userId });
 const departmentRequest = makeRequisition({ requestedByUserId: "another-user" });
 const destinationRequest = makeRequisition({
   requestedByUserId: "another-user",
+  locationId: locationA2,
   departmentId: departmentA2,
   destinationDepartmentId: departmentA
 });
@@ -84,4 +85,3 @@ function makeRequisition(overrides = {}) {
     ...overrides
   };
 }
-
