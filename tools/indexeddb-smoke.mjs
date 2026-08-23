@@ -7,10 +7,14 @@ import {
   getStorageDiagnostics,
   initializeStorage,
   loadAppState,
+  loadRecentNames,
+  loadSettings,
   markSyncQueueFailed,
   queueSyncChange,
   resetStorageForTests,
+  rememberName,
   saveCurrentRequisition,
+  saveSettings,
   setStorageContext,
   upsertRequisition
 } from "../src/storage.js";
@@ -219,18 +223,30 @@ async function testUserAndOrganizationIsolation() {
   await upsertRequisition(requisitionA, []);
   await saveCurrentRequisition(requisitionA);
   await queueSyncChange("requisition", { id: requisitionA.id }, []);
+  await saveSettings({ favoriteTemplates: [{ id: "template-a" }] });
+  await rememberName("Chef A", []);
 
   setStorageContext(contextB);
   const stateB = await loadAppState();
   assert.equal(stateB.requisitions.length, 0);
   assert.equal(stateB.syncQueue.length, 0);
   assert.notEqual(stateB.current.id, requisitionA.id);
+  assert.deepEqual(stateB.settings.favoriteTemplates || [], []);
+  assert.deepEqual(stateB.recentNames, []);
+  await saveSettings({ favoriteTemplates: [{ id: "template-b" }] });
+  await rememberName("Chef B", []);
 
   setStorageContext(contextA);
   const stateA = await loadAppState();
   assert.equal(stateA.requisitions.length, 1);
   assert.equal(stateA.syncQueue.length, 1);
   assert.equal(stateA.current.id, requisitionA.id);
+  assert.deepEqual((await loadSettings()).favoriteTemplates, [{ id: "template-a" }]);
+  assert.deepEqual(await loadRecentNames(), ["Chef A"]);
+
+  setStorageContext(contextB);
+  assert.deepEqual((await loadSettings()).favoriteTemplates, [{ id: "template-b" }]);
+  assert.deepEqual(await loadRecentNames(), ["Chef B"]);
   delete globalThis.localStorage;
   resetStorageForTests();
 }

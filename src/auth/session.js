@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "./client.js?v=2.0.0-beta.3";
+import { getSupabaseClient } from "./client.js?v=2.0.0-beta.4";
 
 export class AuthSessionError extends Error {
   constructor(message, code = "auth_error", cause = null) {

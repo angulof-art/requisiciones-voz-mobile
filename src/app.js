@@ -4,8 +4,8 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=2.0.0-beta.3";
-import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-beta.3";
+} from "./catalog.js?v=2.0.0-beta.4";
+import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-beta.4";
 import {
   STATUS,
   addChange,
@@ -23,7 +23,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=2.0.0-beta.3";
+} from "./requisitions.js?v=2.0.0-beta.4";
 import {
   clearCurrentRequisition,
   getStorageDiagnostics,
@@ -39,14 +39,14 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=2.0.0-beta.3";
+} from "./storage.js?v=2.0.0-beta.4";
 import {
   claimLegacyLocalData,
   initializeStorage,
   loadCachedAuthContext,
   saveCachedAuthContext,
   setStorageContext
-} from "./storage.js?v=2.0.0-beta.3";
+} from "./storage.js?v=2.0.0-beta.4";
 import {
   classifySupabaseError,
   fetchProductAliases,
@@ -59,26 +59,26 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=2.0.0-beta.3";
-import { getSupabaseClient } from "./auth/client.js?v=2.0.0-beta.3";
-import { loadUserContext, selectActiveContext } from "./auth/context.js?v=2.0.0-beta.3";
-import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-beta.3";
+} from "./supabase.js?v=2.0.0-beta.4";
+import { getSupabaseClient } from "./auth/client.js?v=2.0.0-beta.4";
+import { loadUserContext, selectActiveContext } from "./auth/context.js?v=2.0.0-beta.4";
+import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-beta.4";
 import {
   onAuthStateChange,
   restoreSession,
   signInWithPassword,
   signOut
-} from "./auth/session.js?v=2.0.0-beta.3";
-import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-beta.3";
-import { buildOperationalReport } from "./reports.js?v=2.0.0-beta.3";
+} from "./auth/session.js?v=2.0.0-beta.4";
+import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-beta.4";
+import { buildOperationalReport } from "./reports.js?v=2.0.0-beta.4";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
   resolveRequiredAt,
   transitionRequisition,
   updateItemFulfillment
-} from "./workflow.js?v=2.0.0-beta.3";
-import { APP_VERSION } from "./version.js?v=2.0.0-beta.3";
+} from "./workflow.js?v=2.0.0-beta.4";
+import { APP_VERSION } from "./version.js?v=2.0.0-beta.4";
 
 let state = null;
 let appSession = null;
@@ -1001,8 +1001,15 @@ function withExportContext(requisition) {
   const origin = userContext.departments.find((department) => department.id === requisition.departmentId);
   const destination = userContext.departments.find((department) => department.id === requisition.destinationDepartmentId);
   const location = userContext.locations.find((entry) => entry.id === requisition.locationId);
+  const exportRequisition = clone(requisition);
+  exportRequisition.items = exportRequisition.items.map((item) => ({
+    ...item,
+    substitutionProductName: item.substitutionProductId
+      ? state.catalog.find((product) => product.id === item.substitutionProductId)?.officialName || ""
+      : ""
+  }));
   return {
-    ...clone(requisition),
+    ...exportRequisition,
     organizationName: userContext.organization?.name || "",
     locationName: location?.name || userContext.location?.name || "",
     departmentName: origin?.name || userContext.department?.name || "",

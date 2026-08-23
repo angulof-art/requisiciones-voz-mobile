@@ -163,28 +163,54 @@ export class IndexedDbRepository {
     return products;
   }
 
-  async getSettings() {
-    return (await this.get(STORES.settings, SETTINGS_KEY))?.value || null;
+  async getSettings(scopeKey = "") {
+    return (await this.get(STORES.settings, settingsKey(scopeKey)))?.value || null;
   }
 
-  async saveSettings(settings) {
-    await this.put(STORES.settings, { key: SETTINGS_KEY, value: settings });
+  async saveSettings(settings, scopeKey = "") {
+    await this.put(STORES.settings, { key: settingsKey(scopeKey), value: settings });
     return settings;
   }
 
-  async getRecentNames() {
+  async getRecentNames(scopeKey = "") {
     const records = await this.getAll(STORES.recentNames);
-    return records.sort((a, b) => a.position - b.position).map((record) => record.name);
+    return records
+      .filter((record) => (record.scopeKey || "") === scopeKey)
+      .sort((a, b) => a.position - b.position)
+      .map((record) => record.name);
   }
 
-  async saveRecentNames(names) {
+  async saveRecentNames(names, scopeKey = "") {
     const records = names.map((name, position) => ({
-      id: normalizeSearch(name),
+      id: scopeKey ? `${scopeKey}:${normalizeSearch(name)}` : normalizeSearch(name),
       name,
-      position
+      position,
+      ...(scopeKey ? { scopeKey } : {})
     }));
-    await this.replaceStore(STORES.recentNames, records);
+    await this.replaceRecentNamesScope(records, scopeKey);
     return names;
+  }
+
+  async replaceRecentNamesScope(records, scopeKey) {
+    const db = await this.open();
+    const transaction = db.transaction(STORES.recentNames, "readwrite");
+    const completion = transactionDone(transaction);
+    const store = transaction.objectStore(STORES.recentNames);
+    await new Promise((resolve, reject) => {
+      const request = store.openCursor();
+      request.onerror = () => reject(request.error || new Error("No se pudieron actualizar los nombres recientes."));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          records.forEach((record) => store.put(record));
+          resolve();
+          return;
+        }
+        if ((cursor.value.scopeKey || "") === scopeKey) cursor.delete();
+        cursor.continue();
+      };
+    });
+    await completion;
   }
 
   async getSyncQueue() {
@@ -368,6 +394,10 @@ function ensureIndex(store, name, keyPath) {
 
 function requireId(value, label) {
   if (!value?.id) throw new TypeError(`La ${label} no tiene un ID válido.`);
+}
+
+function settingsKey(scopeKey) {
+  return scopeKey ? `${SETTINGS_KEY}:${scopeKey}` : SETTINGS_KEY;
 }
 
 function requestResult(request, fallbackMessage = "La operación local no se pudo completar.") {

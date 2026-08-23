@@ -1,9 +1,9 @@
-import { DEFAULT_CATALOG, normalizeCatalog, normalizeText } from "./catalog.js?v=2.0.0-beta.3";
-import { PUBLIC_APP_CONFIG } from "./config.js?v=2.0.0-beta.3";
-import { IndexedDbRepository, IndexedDbUnavailableError } from "./db/indexeddb.js?v=2.0.0-beta.3";
-import { migrateV10ToIndexedDb } from "./db/migrate-v10.js?v=2.0.0-beta.3";
-import { createRequisition, normalizeRequisition } from "./requisitions.js?v=2.0.0-beta.3";
-import { canSeeRequisitionLocally, hasRole } from "./auth/permissions.js?v=2.0.0-beta.3";
+import { DEFAULT_CATALOG, normalizeCatalog, normalizeText } from "./catalog.js?v=2.0.0-beta.4";
+import { PUBLIC_APP_CONFIG } from "./config.js?v=2.0.0-beta.4";
+import { IndexedDbRepository, IndexedDbUnavailableError } from "./db/indexeddb.js?v=2.0.0-beta.4";
+import { migrateV10ToIndexedDb } from "./db/migrate-v10.js?v=2.0.0-beta.4";
+import { createRequisition, normalizeRequisition } from "./requisitions.js?v=2.0.0-beta.4";
+import { canSeeRequisitionLocally, hasRole } from "./auth/permissions.js?v=2.0.0-beta.4";
 
 export const STORAGE_KEYS = Object.freeze({
   requisitions: "requisiciones-voz:requisitions:v1",
@@ -57,6 +57,7 @@ export async function saveCachedAuthContext(context) {
 export async function claimLegacyLocalData(context) {
   await initializeStorage();
   if (!repository || !context?.userId || !hasRole(context, "administrator")) return false;
+  await claimLegacyPreferences(context);
   const existingClaim = await repository.getMetadata("phase3_legacy_local_claim");
   if (existingClaim) return existingClaim.userId === context.userId;
 
@@ -138,8 +139,8 @@ export async function loadAppState() {
       repository.getRequisitions(),
       repository.getCatalog(),
       repository.getCurrentRequisition(currentScopeKey()),
-      repository.getRecentNames(),
-      repository.getSettings(),
+      repository.getRecentNames(preferenceScopeKey()),
+      repository.getSettings(preferenceScopeKey()),
       repository.getSyncQueue()
     ]);
   const requisitions = storedRequisitions
@@ -256,7 +257,9 @@ export async function saveCatalog(catalog) {
 
 export async function loadRecentNames() {
   await initializeStorage();
-  return repository ? repository.getRecentNames() : readJson(STORAGE_KEYS.recentNames, []);
+  return repository
+    ? repository.getRecentNames(preferenceScopeKey())
+    : loadLegacyPreference(STORAGE_KEYS.recentNames, []);
 }
 
 export async function rememberName(name, existing = null) {
@@ -268,21 +271,23 @@ export async function rememberName(name, existing = null) {
     ...current.filter((entry) => entry.toLocaleLowerCase("es") !== clean.toLocaleLowerCase("es"))
   ].slice(0, 12);
   await initializeStorage();
-  if (repository) await repository.saveRecentNames(next);
-  else writeJson(STORAGE_KEYS.recentNames, next);
+  if (repository) await repository.saveRecentNames(next, preferenceScopeKey());
+  else writeJson(preferenceStorageKey(STORAGE_KEYS.recentNames), next);
   return next;
 }
 
 export async function loadSettings() {
   await initializeStorage();
-  const saved = repository ? await repository.getSettings() : readJson(STORAGE_KEYS.settings, {});
+  const saved = repository
+    ? await repository.getSettings(preferenceScopeKey())
+    : loadLegacyPreference(STORAGE_KEYS.settings, {});
   return normalizeSettings(saved || {});
 }
 
 export async function saveSettings(settings) {
   await initializeStorage();
-  if (repository) await repository.saveSettings(settings);
-  else writeJson(STORAGE_KEYS.settings, settings);
+  if (repository) await repository.saveSettings(settings, preferenceScopeKey());
+  else writeJson(preferenceStorageKey(STORAGE_KEYS.settings), settings);
   return settings;
 }
 
@@ -411,8 +416,8 @@ function loadLegacyAppState() {
     requisitions,
     catalog: mergeCatalogWithSeed(readJson(STORAGE_KEYS.catalog, null)),
     current: savedCurrent?.id ? normalizeRequisition(savedCurrent) : createRequisition(requisitions),
-    recentNames: readJson(STORAGE_KEYS.recentNames, []),
-    settings: normalizeSettings(readJson(STORAGE_KEYS.settings, {})),
+    recentNames: loadLegacyPreference(STORAGE_KEYS.recentNames, []),
+    settings: normalizeSettings(loadLegacyPreference(STORAGE_KEYS.settings, {})),
     syncQueue: readJson(STORAGE_KEYS.syncQueue, []).map(normalizeQueueEntry)
   };
 }
@@ -521,6 +526,43 @@ function currentScopeKey() {
   return activeContext?.userId
     ? `user:${activeContext.userId}:org:${activeContext.organizationId || "none"}`
     : "current";
+}
+
+function preferenceScopeKey() {
+  return activeContext?.userId ? currentScopeKey() : "";
+}
+
+function preferenceStorageKey(key) {
+  const scopeKey = preferenceScopeKey();
+  return scopeKey ? `${key}:${scopeKey}` : key;
+}
+
+function loadLegacyPreference(key, fallback) {
+  const scopeKey = preferenceScopeKey();
+  if (!scopeKey) return readJson(key, fallback);
+  const scoped = readJson(`${key}:${scopeKey}`, null);
+  if (scoped !== null) return scoped;
+  return hasRole(activeContext, "administrator") ? readJson(key, fallback) : fallback;
+}
+
+async function claimLegacyPreferences(context) {
+  const scopeKey = `user:${context.userId}:org:${context.organizationId || "none"}`;
+  const metadataKey = `phase3_legacy_preferences_claim:${scopeKey}`;
+  if (await repository.getMetadata(metadataKey)) return;
+
+  const [legacySettings, scopedSettings, legacyNames, scopedNames] = await Promise.all([
+    repository.getSettings(),
+    repository.getSettings(scopeKey),
+    repository.getRecentNames(),
+    repository.getRecentNames(scopeKey)
+  ]);
+  if (!scopedSettings && legacySettings) await repository.saveSettings(legacySettings, scopeKey);
+  if (!scopedNames.length && legacyNames.length) await repository.saveRecentNames(legacyNames, scopeKey);
+  await repository.setMetadata(metadataKey, {
+    userId: context.userId,
+    organizationId: context.organizationId,
+    claimedAt: new Date().toISOString()
+  });
 }
 
 function hasScope(entry) {

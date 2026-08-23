@@ -82,7 +82,7 @@ assert.deepEqual(rows[1], ["Banano", 30, "und"]);
 
 const csv = requisitionToCsv(requisition, catalog);
 assert.ok(csv.includes("Banano"));
-assert.ok(csv.includes("Unidad de compra"));
+assert.ok(csv.includes("Cumplimiento"));
 
 const xlsx = await requisitionToXlsxBlob(requisition, catalog).arrayBuffer();
 const bytes = new Uint8Array(xlsx);
@@ -107,6 +107,26 @@ assert.equal(pdfHtml.includes("onclick="), false);
 const pdfBytes = new Uint8Array(await requisitionToPdfBlob(requisition).arrayBuffer());
 assert.equal(new TextDecoder("latin1").decode(pdfBytes.slice(0, 8)).startsWith("%PDF-1.4"), true);
 assert.ok(pdfBytes.length > 1000);
+
+const fulfillmentExport = normalizeRequisition({
+  ...requisition,
+  status: "partial",
+  items: [
+    { ...requisition.items[0], requestedQuantity: 30, deliveredQuantity: 12, fulfillmentStatus: "partial", notes: "Entrega parcial" },
+    { ...requisition.items[1], requestedQuantity: 10, deliveredQuantity: 0, fulfillmentStatus: "unavailable", unavailableReason: "Sin inventario" },
+    { ...requisition.items[0], id: "substitution-item", productName: "Queso original", requestedQuantity: 2, quantity: 2, deliveredQuantity: 2, fulfillmentStatus: "substituted", substitutionProductId: "prod-ref-044", substitutionProductName: "Queso mozzarella rebanado" }
+  ]
+});
+fulfillmentExport.items[2].substitutionProductName = "Queso mozzarella rebanado";
+const fulfillmentCsv = requisitionToCsv(fulfillmentExport, catalog);
+const fulfillmentHtml = buildPrintableHtml(fulfillmentExport);
+const fulfillmentShare = buildShareText(fulfillmentExport);
+const fulfillmentXlsx = new TextDecoder().decode(new Uint8Array(await requisitionToXlsxBlob(fulfillmentExport, catalog).arrayBuffer()));
+const fulfillmentPdf = new TextDecoder("latin1").decode(new Uint8Array(await requisitionToPdfBlob(fulfillmentExport).arrayBuffer()));
+for (const output of [fulfillmentCsv, fulfillmentHtml, fulfillmentShare, fulfillmentXlsx, fulfillmentPdf]) {
+  assert.ok(output.includes("Sin inventario"));
+  assert.ok(output.includes("Queso mozzarella rebanado"));
+}
 
 const invalid = createRequisition([requisition]);
 invalid.items = parsed.items;

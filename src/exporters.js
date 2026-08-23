@@ -1,5 +1,5 @@
-import { csvCell } from "./catalog.js?v=2.0.0-beta.3";
-import { STATUS, formatDateParts } from "./requisitions.js?v=2.0.0-beta.3";
+import { csvCell } from "./catalog.js?v=2.0.0-beta.4";
+import { STATUS, formatDateParts } from "./requisitions.js?v=2.0.0-beta.4";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -24,8 +24,8 @@ export function requisitionToExcelRows(requisition, catalog = [], hourFormat = "
 }
 
 export function requisitionToCsv(requisition, catalogOrHourFormat = [], hourFormat = "24") {
-  const { catalog, resolvedHourFormat } = resolveExportArgs(catalogOrHourFormat, hourFormat);
-  return rowsToCsv(requisitionToExcelRows(requisition, catalog, resolvedHourFormat));
+  const { resolvedHourFormat } = resolveExportArgs(catalogOrHourFormat, hourFormat);
+  return rowsToCsv(requisitionToOperationalRows(requisition, resolvedHourFormat));
 }
 
 export function requisitionToOperationalRows(requisition, hourFormat = "24") {
@@ -54,7 +54,7 @@ export function requisitionToOperationalRows(requisition, hourFormat = "24") {
     Number(item.deliveredQuantity || 0),
     item.unit,
     item.fulfillmentStatus || "requested",
-    item.notes || item.unavailableReason || ""
+    fulfillmentDetail(item)
   ])];
 }
 
@@ -138,7 +138,7 @@ export function buildPrintableHtml(requisition, hourFormat = "24") {
           <td class="num">${formatNumber(item.deliveredQuantity || 0)}</td>
           <td>${escapeHtml(item.unit)}</td>
           <td>${escapeHtml(item.fulfillmentStatus || "Solicitado")}</td>
-          <td>${escapeHtml(item.notes || "")}</td>
+          <td>${escapeHtml(fulfillmentDetail(item))}</td>
         </tr>`
       )
       .join("") || '<tr><td colspan="8">Sin productos.</td></tr>';
@@ -212,9 +212,11 @@ export function buildPrintableHtml(requisition, hourFormat = "24") {
 
 export function buildShareText(requisition) {
   const route = [requisition.departmentName || "Origen", requisition.destinationDepartmentName || "Destino"].join(" → ");
-  const lines = (requisition.items || []).map((item) =>
-    `${formatNumber(item.requestedQuantity || item.quantity)} ${item.unit} ${item.productName}`
-  );
+  const lines = (requisition.items || []).map((item) => {
+    const base = `${formatNumber(item.requestedQuantity || item.quantity)} ${item.unit} ${item.productName}`;
+    const detail = fulfillmentDetail(item);
+    return detail ? `${base} | ${detail}` : base;
+  });
   return [requisition.requisitionNumber, route, "", ...lines].join("\n");
 }
 
@@ -259,13 +261,23 @@ function buildPdfPage(requisition, items, hourFormat, pageNumber) {
     commands.push(textCommand(375, y + 5, 8, formatNumber(item.deliveredQuantity || 0)));
     commands.push(textCommand(445, y + 5, 8, item.unit || ""));
     commands.push(textCommand(495, y + 5, 7, truncatePdfText(item.fulfillmentStatus || "requested", 14)));
-    const note = item.notes || item.unavailableReason || "";
+    const note = fulfillmentDetail(item);
     if (note) commands.push(textCommand(44, y - 7, 7, truncatePdfText(`Nota: ${note}`, 80)));
     y -= 25;
   });
   commands.push("0.2 0.2 0.2 RG 0.7 w 42 75 m 250 75 l S", "0.2 0.2 0.2 RG 0.7 w 340 75 m 553 75 l S");
   commands.push(textCommand(42, 60, 8, "Revisado por"), textCommand(340, 60, 8, "Firma / recibido"));
   return commands.join("\n");
+}
+
+function fulfillmentDetail(item) {
+  return [
+    item.notes ? `Nota: ${item.notes}` : "",
+    item.unavailableReason ? `Sin existencia: ${item.unavailableReason}` : "",
+    item.substitutionProductName || item.substitutionProductId
+      ? `Sustitución: ${item.substitutionProductName || item.substitutionProductId}`
+      : ""
+  ].filter(Boolean).join(" | ");
 }
 
 function buildPdfDocument(pageContents) {
