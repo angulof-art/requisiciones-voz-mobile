@@ -253,7 +253,9 @@ Fase 9: implementada en `2.0.0-beta.3` con CSP, escaneo de secretos,
 conflictos por revision, paginacion, prueba de 5.000 pedidos, exports y prueba
 visual a 320/390 px. El estado general permanece **NOT READY** porque Supabase
 no tiene usuarios/perfiles y por ello no se ejecutaron la matriz RLS ni el flujo
-E2E multicuenta. El acceso anonimo no se retira hasta completar ese bootstrap.
+E2E multicuenta. La auditoria de cierre `2.0.0-beta.4` reforzo triggers,
+numeracion, aislamiento local y exportaciones, pero mantiene **NOT READY**. El
+acceso anonimo no se retira hasta completar ese bootstrap.
 
 Checklist detallado: `docs/PRODUCTION_CHECKLIST.md`.
 

@@ -4,14 +4,14 @@ Fecha: 23/08/2026
 
 ## 1. Version final
 
-`2.0.0-beta.3`. No se promovio a release candidate por bloqueos de validacion
+`2.0.0-beta.4`. No se promovio a release candidate por bloqueos de validacion
 real de Auth/RLS.
 
 ## 2. Commit final
 
-Commit final de implementacion de Fase 9: `d75142b`,
-`test: add production readiness and conflict hardening`. Los commits de Fases
-3 a 8 estan identificados en el historial.
+El `HEAD` publicado de `2.0.0-beta.4` contiene la auditoria de cierre. El SHA
+exacto se registra en la entrega de esta version; el detalle tecnico esta en
+`RC_PRODUCTION_AUDIT.md`.
 
 ## 3. Fases completadas
 
@@ -34,21 +34,21 @@ contener la implementacion interna de almacenamiento o autenticacion.
 
 El modelo incluye organizaciones, sedes, departamentos, perfiles, membresias,
 roles/permisos, productos, alias aprendidos, requisiciones, lineas, cambios y
-secuencia diaria. Las migraciones remotas hasta `202608230012` estan aplicadas.
-`202608230013_add_foreign_key_indexes.sql` queda creada localmente y pendiente
-de aplicacion remota.
+secuencia diaria. Las migraciones remotas de indices y hardening hasta la
+equivalencia local `202608230016` estan aplicadas. El corte anonimo
+`202608220008` sigue pendiente.
 
 ## 6. Datos migrados
 
-Conteos remotos verificados: 327 productos, 8 requisiciones, 53 lineas y 92
-cambios. Hay 1 organizacion, 1 sede y 9 departamentos. Las columnas V10 y el
+Conteos remotos verificados: 327 productos, 11 requisiciones, 64 lineas y 102
+cambios. Hay 1 organizacion, 1 sede y 10 departamentos. Las columnas V10 y el
 respaldo local permanecen; no se borro informacion.
 
 ## 7. Auth
 
 Email/password, restauracion, refresh, expiracion y logout estan implementados
-con `@supabase/supabase-js`. Estado remoto: 0 usuarios y 0 perfiles. No se
-crearon identidades ficticias ni se insertaron usuarios directamente.
+con `@supabase/supabase-js`. Estado remoto: 2 usuarios y 2 perfiles; solo uno
+tiene membership activa como administrador. No se asigno acceso artificial.
 
 ## 8. RLS
 
@@ -76,7 +76,8 @@ contexto, ambiguedad y unidad inferida. No se conserva audio.
 
 ## 12. IndexedDB/offline
 
-IndexedDB v2 aísla por usuario/organizacion, conserva el pedido actual y cola,
+IndexedDB v2 aísla por usuario/organizacion, conserva el pedido actual, cola,
+preferencias, plantillas y nombres recientes,
 migra V10 de forma idempotente/reanudable y mantiene `localStorage` como
 respaldo. El fallback informa errores reales de escritura.
 
@@ -94,19 +95,19 @@ mas solicitados, sustituciones y desempeño por departamento con filtros.
 ## 15. Exportaciones
 
 PDF binario profesional, XLSX real con hoja simple y hoja operativa, CSV para
-Google Sheets y Web Share con fallback al portapapeles.
+Google Sheets y Web Share con parcial, faltantes, sustituciones y notas.
 
 ## 16. Seguridad
 
-CSP restrictiva, dependencias fijadas, publishable key solamente, escaneo de 73
-archivos sin secretos detectados y aislamiento local. Advisor de seguridad solo
-informa la tabla de secuencia con RLS sin politica, intencionalmente sin acceso
-directo al cliente.
+CSP restrictiva, dependencias fijadas, publishable key solamente, escaneo de 80
+archivos sin secretos detectados y aislamiento local. El advisor informa la
+secuencia con RLS sin politica (intencional) y leaked-password protection
+desactivado. El acceso anonimo legado continua como riesgo critico.
 
 ## 17. Performance
 
 La capa local prueba 1.000 productos y 5.000 pedidos. El reporte de 5.000
-pedidos completo en 899,5 ms en la ejecucion final. El historial renderiza
+pedidos completo en 1450,3 ms en la auditoria beta.4. El historial renderiza
 30 filas por lote.
 
 ## 18. Tests
@@ -118,10 +119,10 @@ estructura estatica. Login probado a 320/390 px sin overflow ni consola.
 
 ## 19. Riesgos pendientes
 
-- Critico: no existe administrador ni usuario real; la aplicacion autenticada no puede operar.
+- Critico: faltan memberships reales requester, receiver y manager.
 - Critico: acceso anonimo V10 continua activo hasta validar Auth y RLS.
 - Alto: matriz RLS y workflow multicuenta E2E no ejecutados.
-- Medio: migracion remota de indices FK pendiente; advisor mantiene avisos de rendimiento.
+- Medio: leaked-password protection requiere activacion manual si el plan lo permite.
 - Medio: offline/sync autenticado requiere prueba manual con dispositivos reales.
 - Bajo: precision acustica depende del navegador, ruido y permisos del microfono.
 

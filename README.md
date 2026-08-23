@@ -2,7 +2,7 @@
 
 Aplicacion web movil para crear pedidos o requisiciones por voz.
 
-Version actual: **2.0.0-beta.3**. La estrategia completa de evolucion y
+Version actual: **2.0.0-beta.4**. La estrategia completa de evolucion y
 migracion segura esta en `V2_IMPLEMENTATION_PLAN.md`.
 
 ## Funciones incluidas
@@ -127,8 +127,10 @@ separadas:
 organizacion, sede, departamento, membresias y roles.
 
 El estado de preparacion real esta en `docs/PRODUCTION_CHECKLIST.md`. La version
-`2.0.0-beta.3` no debe promoverse a produccion hasta crear el administrador,
-ejecutar la matriz RLS multicuenta y retirar el acceso anonimo de demostracion.
+`2.0.0-beta.4` no debe promoverse a RC hasta ejecutar la matriz RLS con
+requester, receiver y manager reales, completar el workflow E2E y retirar el
+acceso anonimo de demostracion. La evidencia esta en
+`RC_PRODUCTION_AUDIT.md`.
 
 ## Despliegue
 

@@ -57,9 +57,9 @@ La matriz obligatoria antes del corte anonimo cubre:
 
 ## Estado del piloto
 
-Al 23/08/2026 el proyecto remoto tiene 0 usuarios, 0 perfiles y 0 membresias.
-Por esa razon `tools/rls-matrix.mjs` no se ejecuto con credenciales reales y la
-migracion `202608220008_disable_demo_anon_access.sql` permanece deliberadamente
-sin aplicar. Primero debe completarse `ADMIN_BOOTSTRAP.md`, crear cuentas de dos
-organizaciones y ejecutar la matriz. Ocultar la app tras Auth antes de ese paso
-dejaria al equipo operativo sin acceso.
+Al 23/08/2026 el proyecto remoto tiene 2 usuarios, 2 perfiles y 1 membership
+activa con rol administrator. Faltan memberships reales de requester, receiver
+y manager, por lo que `tools/rls-matrix.mjs` no pudo completarse. La migracion
+`202608220008_disable_demo_anon_access.sql` permanece deliberadamente sin
+aplicar hasta ejecutar la matriz y el workflow E2E. No se debe asignar acceso
+artificial al perfil que actualmente no tiene membership.
