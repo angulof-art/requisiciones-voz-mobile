@@ -66,7 +66,7 @@ assert.deepEqual(
 );
 
 markConfirmed(requisition);
-assert.equal(requisition.status, "confirmed");
+assert.equal(requisition.status, "submitted");
 assert.ok(requisition.confirmedAt);
 
 const rows = requisitionToExcelRows(requisition, catalog);

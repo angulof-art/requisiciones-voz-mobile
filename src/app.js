@@ -52,6 +52,7 @@ import {
   fetchRequisitionsFromSupabase,
   isSupabaseReady,
   normalizeSupabaseUrl,
+  reserveRequisitionNumber,
   setSupabaseSessionContext,
   syncAllToSupabase,
   testSupabase,
@@ -66,6 +67,13 @@ import {
   signInWithPassword,
   signOut
 } from "./auth/session.js?v=2.0.0-beta.2";
+import {
+  FULFILLMENT_STATUS,
+  deriveRequisitionFulfillmentStatus,
+  resolveRequiredAt,
+  transitionRequisition,
+  updateItemFulfillment
+} from "./workflow.js?v=2.0.0-beta.2";
 import { APP_VERSION } from "./version.js?v=2.0.0-beta.2";
 
 let state = null;
@@ -113,6 +121,12 @@ const els = {
   identityName: document.querySelector("#identityName"),
   identityContext: document.querySelector("#identityContext"),
   requestedBy: document.querySelector("#requestedBy"),
+  originDepartment: document.querySelector("#originDepartment"),
+  destinationDepartment: document.querySelector("#destinationDepartment"),
+  priority: document.querySelector("#priority"),
+  requiredPreset: document.querySelector("#requiredPreset"),
+  customRequiredLabel: document.querySelector("#customRequiredLabel"),
+  customRequiredAt: document.querySelector("#customRequiredAt"),
   responsibleError: document.querySelector("#responsibleError"),
   recentNames: document.querySelector("#recentNames"),
   voiceButton: document.querySelector("#voiceButton"),
@@ -146,6 +160,10 @@ const els = {
   historyDate: document.querySelector("#historyDate"),
   historyList: document.querySelector("#historyList"),
   historyEmpty: document.querySelector("#historyEmpty"),
+  inboxStatus: document.querySelector("#inboxStatus"),
+  inboxCount: document.querySelector("#inboxCount"),
+  inboxList: document.querySelector("#inboxList"),
+  inboxEmpty: document.querySelector("#inboxEmpty"),
   catalogImport: document.querySelector("#catalogImport"),
   catalogSearch: document.querySelector("#catalogSearch"),
   catalogStatus: document.querySelector("#catalogStatus"),
@@ -303,6 +321,20 @@ function bindEvents() {
     scheduleAutoSave();
   });
 
+  els.destinationDepartment.addEventListener("change", () => {
+    state.current.destinationDepartmentId = els.destinationDepartment.value;
+    scheduleAutoSave();
+  });
+  els.priority.addEventListener("change", () => {
+    state.current.priority = els.priority.value;
+    scheduleAutoSave();
+  });
+  els.requiredPreset.addEventListener("change", handleRequiredPresetChange);
+  els.customRequiredAt.addEventListener("change", () => {
+    state.current.requiredAt = resolveRequiredAt("custom", new Date(), els.customRequiredAt.value);
+    scheduleAutoSave();
+  });
+
   els.voiceButton.addEventListener("click", toggleSpeech);
   els.processTranscriptButton.addEventListener("click", processTranscript);
   els.retryLocalSaveButton.addEventListener("click", autoSaveOrder);
@@ -329,6 +361,8 @@ function bindEvents() {
     input.addEventListener("change", renderHistory);
   });
   els.historyList.addEventListener("click", handleHistoryAction);
+  els.inboxStatus.addEventListener("change", renderInbox);
+  els.inboxList.addEventListener("click", handleInboxAction);
 
   els.catalogForm.addEventListener("submit", saveCatalogProduct);
   els.resetCatalogForm.addEventListener("click", resetCatalogForm);
@@ -371,6 +405,7 @@ function navigate(target) {
   const titles = {
     new: "Nuevo pedido",
     history: "Historial",
+    inbox: "Pedidos recibidos",
     catalog: "Catálogo",
     config: "Configuración",
     sync: "Estado",
@@ -379,6 +414,7 @@ function navigate(target) {
   };
   els.screenTitle.textContent = titles[target] || "Pedidos por Voz";
   if (target === "history") renderHistory();
+  if (target === "inbox") renderInbox();
   if (target === "catalog") renderCatalog();
   if (target === "sync") renderSync();
   if (target === "profile") renderUserContext();
@@ -422,6 +458,55 @@ function renderDepartmentSelector() {
     .filter((department) => department.location_id === locationId)
     .map((department) => `<option value="${escapeHtml(department.id)}" ${department.id === userContext.departmentId ? "selected" : ""}>${escapeHtml(department.name)}</option>`)
     .join("");
+}
+
+function renderRouting() {
+  if (!userContext || !state?.current) return;
+  const origin = userContext.departments.find((department) => department.id === userContext.departmentId);
+  els.originDepartment.textContent = origin?.name || userContext.department?.name || "Departamento";
+  const destinations = userContext.departments.filter(
+    (department) => department.organization_id === userContext.organizationId && department.id !== userContext.departmentId
+  );
+  els.destinationDepartment.innerHTML = [
+    '<option value="">Seleccione destino</option>',
+    ...destinations.map((department) => {
+      const location = userContext.locations.find((entry) => entry.id === department.location_id);
+      const label = location && location.id !== userContext.locationId
+        ? `${department.name} · ${location.name}`
+        : department.name;
+      return `<option value="${escapeHtml(department.id)}">${escapeHtml(label)}</option>`;
+    })
+  ].join("");
+  els.destinationDepartment.value = state.current.destinationDepartmentId || "";
+  els.priority.value = state.current.priority || "normal";
+  if (state.current.requiredAt) {
+    els.requiredPreset.value = "custom";
+    els.customRequiredAt.value = toDateTimeLocal(state.current.requiredAt);
+  } else {
+    els.requiredPreset.value = "tomorrow-am";
+    els.customRequiredAt.value = "";
+    state.current.requiredAt = resolveRequiredAt("tomorrow-am");
+  }
+  const editable = ["draft", "review"].includes(state.current.status);
+  els.destinationDepartment.disabled = !editable;
+  els.priority.disabled = !editable;
+  els.requiredPreset.disabled = !editable;
+  els.customRequiredAt.disabled = !editable;
+  els.customRequiredLabel.hidden = els.requiredPreset.value !== "custom";
+}
+
+function handleRequiredPresetChange() {
+  const preset = els.requiredPreset.value;
+  els.customRequiredLabel.hidden = preset !== "custom";
+  state.current.requiredAt = resolveRequiredAt(preset, new Date(), els.customRequiredAt.value);
+  scheduleAutoSave();
+}
+
+function toDateTimeLocal(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 async function saveActiveContext() {
@@ -688,16 +773,33 @@ function handleItemAction(event) {
 
 async function confirmOrder() {
   state.current.requestedBy = els.requestedBy.value.trim();
+  state.current.requestedByName = state.current.requestedBy;
   const validation = validateRequisition(state.current, state.catalog, "confirm");
   renderValidation(validation);
   if (!validation.ok) {
     toast(validation.errors[0]);
     return;
   }
+  await ensureServerRequisitionNumber();
   markConfirmed(state.current);
   if (!(await saveOrderAndQueue())) return;
-  toast("Pedido confirmado correctamente.");
+  toast("Pedido enviado correctamente.");
   render();
+}
+
+async function ensureServerRequisitionNumber() {
+  if (!navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
+  if (state.current.serverNumberReserved) return;
+  try {
+    const result = await reserveRequisitionNumber(state.settings.supabase);
+    const number = typeof result === "string" ? result : result?.requisition_number || result?.requisitionNumber;
+    if (number) {
+      state.current.requisitionNumber = number;
+      state.current.serverNumberReserved = true;
+    }
+  } catch (error) {
+    console.warn("No se pudo reservar el consecutivo remoto; se conservará el provisional.", error);
+  }
 }
 
 async function exportPdf() {
@@ -798,7 +900,7 @@ async function saveOrderAndQueue() {
 async function autoSaveOrder() {
   state.current.requestedBy = els.requestedBy.value.trim();
   state.current.updatedAt = new Date().toISOString();
-  if (!["confirmed", "exported", "voided"].includes(state.current.status)) {
+  if (["draft", "review"].includes(state.current.status)) {
     state.current.status = state.current.items.some((item) => item.needsReview) ? "review" : "draft";
   }
   setLocalSaveState("saving");
@@ -865,7 +967,13 @@ async function startNewOrder() {
     await clearCurrentRequisition();
     state.current = createRequisition(state.requisitions);
     state.current.requestedBy = userContext.displayName;
+    state.current.requestedByName = userContext.displayName;
     state.current.requestedByUserId = userContext.userId;
+    state.current.organizationId = userContext.organizationId;
+    state.current.locationId = userContext.locationId;
+    state.current.departmentId = userContext.departmentId;
+    state.current.priority = "normal";
+    state.current.requiredAt = resolveRequiredAt("tomorrow-am");
     undoStack.length = 0;
     replaceIndex = null;
     els.transcriptInput.value = "";
@@ -890,7 +998,7 @@ async function preserveCurrentOrder() {
   state.current.requestedBy = els.requestedBy.value.trim();
   if (!isMeaningfulRequisition(state.current)) return false;
   state.current.updatedAt = new Date().toISOString();
-  if (!["confirmed", "exported", "voided"].includes(state.current.status)) {
+  if (["draft", "review"].includes(state.current.status)) {
     state.current.status = state.current.items.some((item) => item.needsReview) ? "review" : "draft";
   }
   try {
@@ -1073,6 +1181,73 @@ async function handleHistoryAction(event) {
     toast("Pedido anulado.");
     scheduleAutoSync();
   }
+  if (["accept", "close"].includes(button.dataset.action)) {
+    const nextStatus = button.dataset.action === "accept" ? "accepted" : "closed";
+    const previous = clone(requisition);
+    try {
+      transitionRequisition(requisition, nextStatus);
+      addChange(requisition, `flujo_${nextStatus}`, previous, requisition);
+      await persistWorkflowRequisition(requisition);
+      toast(nextStatus === "accepted" ? "Entrega recibida conforme." : "Pedido cerrado.");
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+}
+
+async function handleInboxAction(event) {
+  const button = event.target.closest("button[data-action][data-id]");
+  if (!button || !hasPermission(userContext, PERMISSIONS.receiveRequisitions)) return;
+  const requisition = state.requisitions.find((entry) => entry.id === button.dataset.id);
+  if (!requisition) return;
+  const previous = clone(requisition);
+  try {
+    if (button.dataset.action === "receive") transitionRequisition(requisition, "received");
+    if (button.dataset.action === "prepare") transitionRequisition(requisition, "preparing");
+    if (button.dataset.action === "save-fulfillment") {
+      const card = button.closest("[data-requisition-id]");
+      if (requisition.status === "received") transitionRequisition(requisition, "preparing");
+      for (const row of card.querySelectorAll("[data-fulfillment-item]")) {
+        const item = requisition.items.find((entry) => entry.id === row.dataset.fulfillmentItem);
+        if (!item) continue;
+        updateItemFulfillment(item, {
+          fulfillmentStatus: row.querySelector('[data-field="fulfillmentStatus"]').value,
+          deliveredQuantity: Number(row.querySelector('[data-field="deliveredQuantity"]').value || 0),
+          unavailableReason: row.querySelector('[data-field="unavailableReason"]').value.trim(),
+          substitutionProductId: row.querySelector('[data-field="substitutionProductId"]').value
+        });
+      }
+      const derived = deriveRequisitionFulfillmentStatus(requisition.items);
+      if (derived !== requisition.status && ["preparing", "partial", "delivered"].includes(derived)) {
+        transitionRequisition(requisition, derived);
+      }
+    }
+    if (button.dataset.action === "deliver-all") {
+      if (requisition.status === "received") transitionRequisition(requisition, "preparing");
+      requisition.items.forEach((item) => updateItemFulfillment(item, {
+        fulfillmentStatus: "delivered",
+        deliveredQuantity: item.requestedQuantity || item.quantity
+      }));
+      transitionRequisition(requisition, "delivered");
+    }
+    addChange(requisition, `flujo_${button.dataset.action}`, previous, requisition);
+    await persistWorkflowRequisition(requisition);
+    toast("Estado del pedido actualizado.");
+  } catch (error) {
+    Object.assign(requisition, previous);
+    toast(error.message || "No se pudo actualizar el pedido.");
+  }
+}
+
+async function persistWorkflowRequisition(requisition) {
+  state.requisitions = await upsertRequisition(requisition, state.requisitions);
+  state.syncQueue = await queueSyncChange("requisition", { id: requisition.id }, state.syncQueue);
+  if (state.current.id === requisition.id) {
+    state.current = clone(requisition);
+    await persistCurrent();
+  }
+  render();
+  scheduleAutoSync();
 }
 
 async function saveUiSettings() {
@@ -1566,9 +1741,11 @@ function render() {
     ? `Último dictado: ${previousTranscripts.at(-1)}`
     : "";
   renderResponsibleState();
+  renderRouting();
   renderSummary();
   renderItems();
   renderHistory();
+  renderInbox();
   renderCatalog();
   renderConnection();
   renderRecentNames();
@@ -1578,6 +1755,13 @@ function renderSummary() {
   els.requisitionNumber.textContent = state.current.requisitionNumber;
   els.statusBadge.textContent = STATUS[state.current.status] || state.current.status;
   els.statusBadge.className = `state-badge ${state.current.status}`;
+  els.confirmButton.hidden = !["draft", "review"].includes(state.current.status);
+  const editable = ["draft", "review"].includes(state.current.status);
+  els.voiceButton.disabled = !editable;
+  els.transcriptInput.disabled = !editable;
+  els.processTranscriptButton.disabled = !editable;
+  els.addRowButton.disabled = !editable;
+  els.undoButton.disabled = !editable;
 }
 
 function renderResponsibleState() {
@@ -1592,6 +1776,8 @@ function renderItems() {
   els.itemCount.textContent = String(state.current.items.length);
   const units = unitOptions();
   state.current.items.forEach((item, index) => {
+    const editable = ["draft", "review"].includes(state.current.status);
+    const disabled = editable ? "" : "disabled";
     const card = document.createElement("article");
     card.className = `item-card ${item.needsReview ? "review" : ""}`;
     card.dataset.id = item.id;
@@ -1611,10 +1797,10 @@ function renderItems() {
         ${item.needsReview ? '<span class="state-badge">Revisar</span>' : ""}
       </div>
       <div class="item-grid">
-        <label class="product-field">Producto <input data-field="productName" value="${escapeHtml(item.productName)}" /></label>
-        <label>Cantidad <input data-field="quantity" type="number" min="0.001" step="0.001" value="${item.quantity ?? ""}" /></label>
-        <label>Unidad de compra <select data-field="unit">${options}</select></label>
-        ${item.notes ? `<label class="notes-field">Observaciones <input data-field="notes" value="${escapeHtml(item.notes)}" /></label>` : ""}
+        <label class="product-field">Producto <input data-field="productName" value="${escapeHtml(item.productName)}" ${disabled} /></label>
+        <label>Cantidad <input data-field="quantity" type="number" min="0.001" step="0.001" value="${item.quantity ?? ""}" ${disabled} /></label>
+        <label>Unidad de compra <select data-field="unit" ${disabled}>${options}</select></label>
+        ${item.notes ? `<label class="notes-field">Observaciones <input data-field="notes" value="${escapeHtml(item.notes)}" ${disabled} /></label>` : ""}
       </div>
       ${item.needsReview ? `<div class="review-callout">
         <p class="review-note">Revise esta línea antes de confirmar.</p>
@@ -1625,11 +1811,11 @@ function renderItems() {
         <span>Autorizar unidad no habitual</span>
       </label>` : ""}
       ${suggestions ? `<div class="toolbar">${suggestions}</div>` : ""}
-      <div class="card-actions">
+      ${editable ? `<div class="card-actions">
         <button class="secondary" type="button" data-action="duplicate">Duplicar</button>
         <button class="secondary" type="button" data-action="replace-voice">Redictar</button>
         <button class="danger" type="button" data-action="delete">Eliminar</button>
-      </div>
+      </div>` : ""}
     `;
     els.itemsList.append(card);
   });
@@ -1670,6 +1856,9 @@ function renderHistory() {
       .join(", ");
     const remainingProducts = Math.max(0, req.items.length - 3);
     const actionLabel = ["draft", "review"].includes(req.status) ? "Continuar" : "Ver";
+    const canAccept = req.status === "delivered" && req.requestedByUserId === userContext.userId;
+    const canClose = req.status === "accepted" && (hasRole(userContext, "manager") || hasRole(userContext, "administrator"));
+    const canVoid = ["draft", "review", "submitted", "received", "preparing", "partial"].includes(req.status);
     const card = document.createElement("article");
     card.className = "history-card";
     card.innerHTML = `
@@ -1687,13 +1876,67 @@ function renderHistory() {
       <p class="history-date">Creado ${created.date} ${created.time} · Actualizado ${updated.date} ${updated.time}</p>
       <div class="card-actions">
         <button type="button" data-action="open" data-id="${escapeHtml(req.id)}">${actionLabel}</button>
+        ${canAccept ? `<button type="button" data-action="accept" data-id="${escapeHtml(req.id)}">Recibido conforme</button>` : ""}
+        ${canClose ? `<button type="button" data-action="close" data-id="${escapeHtml(req.id)}">Cerrar</button>` : ""}
         <button class="secondary" type="button" data-action="duplicate" data-id="${escapeHtml(req.id)}">Duplicar</button>
-        <button class="danger" type="button" data-action="void" data-id="${escapeHtml(req.id)}">Anular</button>
+        ${canVoid ? `<button class="danger" type="button" data-action="void" data-id="${escapeHtml(req.id)}">Anular</button>` : ""}
       </div>
     `;
     els.historyList.append(card);
   });
   els.historyEmpty.classList.toggle("visible", rows.length === 0);
+}
+
+function renderInbox() {
+  if (!state || !userContext || !hasPermission(userContext, PERMISSIONS.receiveRequisitions)) return;
+  const selected = els.inboxStatus.value || "active";
+  const activeStatuses = ["submitted", "received", "preparing", "partial"];
+  const rows = state.requisitions
+    .filter((req) => userContext.departmentIds.includes(req.destinationDepartmentId))
+    .filter((req) => selected === "active" ? activeStatuses.includes(req.status) : req.status === selected)
+    .sort((left, right) => {
+      const priorityOrder = { emergency: 0, urgent: 1, normal: 2 };
+      return (priorityOrder[left.priority] ?? 2) - (priorityOrder[right.priority] ?? 2)
+        || new Date(left.requiredAt || left.createdAt) - new Date(right.requiredAt || right.createdAt);
+    });
+  els.inboxCount.textContent = `${rows.length} ${rows.length === 1 ? "pedido" : "pedidos"}`;
+  els.inboxList.innerHTML = "";
+  rows.forEach((req) => {
+    const origin = userContext.departments.find((department) => department.id === req.departmentId);
+    const required = formatDateParts(req.requiredAt || req.createdAt, state.settings.hourFormat);
+    const canPrepare = ["received", "preparing", "partial"].includes(req.status);
+    const card = document.createElement("article");
+    card.className = `history-card priority-${req.priority || "normal"}`;
+    card.dataset.requisitionId = req.id;
+    const itemRows = req.items.map((item) => {
+      const productOptions = state.catalog
+        .filter((product) => product.active !== false && product.id !== item.productId)
+        .map((product) => `<option value="${escapeHtml(product.id)}" ${product.id === item.substitutionProductId ? "selected" : ""}>${escapeHtml(product.officialName)}</option>`)
+        .join("");
+      const statusOptions = Object.entries(FULFILLMENT_STATUS)
+        .map(([value, label]) => `<option value="${value}" ${value === item.fulfillmentStatus ? "selected" : ""}>${label}</option>`)
+        .join("");
+      return `<div class="fulfillment-row" data-fulfillment-item="${escapeHtml(item.id)}">
+        <div><strong>${escapeHtml(item.productName)}</strong><span>${item.requestedQuantity || item.quantity} ${escapeHtml(item.unit)}</span></div>
+        ${canPrepare ? `<label>Estado<select data-field="fulfillmentStatus">${statusOptions}</select></label>
+          <label>Entregado<input data-field="deliveredQuantity" type="number" min="0" max="${item.requestedQuantity || item.quantity}" step="0.001" value="${item.deliveredQuantity || 0}" /></label>
+          <label>Razón<input data-field="unavailableReason" value="${escapeHtml(item.unavailableReason || "")}" placeholder="Si no hay existencia" /></label>
+          <label>Sustituto<select data-field="substitutionProductId"><option value="">Sin sustituto</option>${productOptions}</select></label>` : ""}
+      </div>`;
+    }).join("");
+    const action = req.status === "submitted"
+      ? `<button type="button" data-action="receive" data-id="${escapeHtml(req.id)}">Recibir pedido</button>`
+      : req.status === "received"
+        ? `<button type="button" data-action="prepare" data-id="${escapeHtml(req.id)}">Iniciar preparación</button>`
+        : "";
+    card.innerHTML = `<div class="history-header"><div><div class="history-title">${escapeHtml(req.requisitionNumber)}</div>
+      <div class="meta-line"><span>${escapeHtml(origin?.name || "Origen")}</span><span>${escapeHtml(req.requestedByName || req.requestedBy)}</span><span>${STATUS[req.status] || req.status}</span></div></div>
+      <span class="state-badge ${escapeHtml(req.priority || "normal")}">${escapeHtml(req.priority || "normal")}</span></div>
+      <p class="history-date">Se necesita ${required.date} ${required.time}</p>${itemRows}
+      <div class="card-actions">${action}${canPrepare ? `<button type="button" data-action="save-fulfillment" data-id="${escapeHtml(req.id)}">Guardar preparación</button><button class="secondary" type="button" data-action="deliver-all" data-id="${escapeHtml(req.id)}">Entregar todo</button>` : ""}</div>`;
+    els.inboxList.append(card);
+  });
+  els.inboxEmpty.classList.toggle("visible", rows.length === 0);
 }
 
 function renderCatalog() {

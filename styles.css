@@ -243,6 +243,9 @@ h2 {
 .status-pill.online,
 .state-badge.confirmed,
 .state-badge.exported,
+.state-badge.delivered,
+.state-badge.accepted,
+.state-badge.closed,
 .autosave-state.synced {
   background: #ddf7e8;
   color: var(--ok);
@@ -254,6 +257,17 @@ h2 {
   color: var(--danger);
 }
 
+.state-badge.emergency {
+  background: #fff0ef;
+  color: var(--danger);
+}
+
+.state-badge.urgent,
+.state-badge.partial {
+  background: #fff4df;
+  color: var(--accent);
+}
+
 .screen {
   display: none;
 }
@@ -262,6 +276,80 @@ h2 {
   display: grid;
   gap: 0.85rem;
   padding-top: 0.75rem;
+}
+
+.routing-panel {
+  display: grid;
+  gap: 0.65rem;
+  border-block: 1px solid var(--line);
+  padding-block: 0.7rem;
+}
+
+.route-summary,
+.routing-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.route-summary > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.route-summary span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.route-summary strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routing-options label:last-child {
+  grid-column: 1 / -1;
+}
+
+.history-card.priority-emergency {
+  border-left: 4px solid var(--danger);
+}
+
+.history-card.priority-urgent {
+  border-left: 4px solid var(--accent);
+}
+
+.fulfillment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 0.75fr);
+  gap: 0.55rem;
+  border-top: 1px solid var(--line);
+  padding-block: 0.7rem;
+}
+
+.fulfillment-row > div {
+  display: grid;
+  align-content: start;
+  gap: 0.15rem;
+}
+
+.fulfillment-row > div span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.fulfillment-row label {
+  min-width: 0;
+}
+
+@media (min-width: 620px) {
+  .fulfillment-row {
+    grid-template-columns: minmax(180px, 1.2fr) repeat(4, minmax(120px, 0.8fr));
+    align-items: end;
+  }
 }
 
 .update-banner {

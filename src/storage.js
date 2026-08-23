@@ -532,6 +532,7 @@ function applyScope(requisition, context) {
   return {
     ...requisition,
     requestedBy: requisition.requestedBy || context.displayName,
+    requestedByName: requisition.requestedByName || requisition.requestedBy || context.displayName,
     organizationId: requisition.organizationId || context.organizationId,
     locationId: requisition.locationId || context.locationId,
     departmentId: requisition.departmentId || context.departmentId,

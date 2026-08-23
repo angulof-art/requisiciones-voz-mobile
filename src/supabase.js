@@ -74,6 +74,14 @@ export async function testSupabase(settings) {
   return true;
 }
 
+export async function reserveRequisitionNumber(settings) {
+  if (!activeContext?.organizationId) throw new Error("Falta el contexto de organización.");
+  return supabaseRequest(settings, "rpc/next_requisition_number", {
+    method: "POST",
+    body: { target_organization_id: activeContext.organizationId }
+  });
+}
+
 export async function syncRequisitionToSupabase(settings, requisition, catalog) {
   if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
   const workspaceId = settings.workspaceId || "main";
@@ -384,13 +392,23 @@ function requisitionToRow(requisition, workspaceId) {
     revision_number: Math.max(1, Number(requisition.revisionNumber) || 1),
     requisition_number: requisition.requisitionNumber,
     requested_by: requisition.requestedBy,
+    requested_by_name: requisition.requestedByName || requisition.requestedBy,
+    required_at: requisition.requiredAt || null,
+    priority: requisition.priority || "normal",
     status: requisition.status,
     original_transcript: requisition.originalTranscript,
     device_info: requisition.deviceInfo,
     created_at: requisition.createdAt,
     updated_at: requisition.updatedAt,
     confirmed_at: requisition.confirmedAt || null,
-    exported_at: requisition.exportedAt || null
+    exported_at: requisition.exportedAt || null,
+    submitted_at: requisition.submittedAt || null,
+    received_at: requisition.receivedAt || null,
+    preparing_at: requisition.preparingAt || null,
+    delivered_at: requisition.deliveredAt || null,
+    accepted_at: requisition.acceptedAt || null,
+    closed_at: requisition.closedAt || null,
+    rejected_at: requisition.rejectedAt || null
   };
 }
 
@@ -402,6 +420,11 @@ function itemToRow(item, requisitionId, index) {
     product_code: item.productCode || "",
     product_name: item.productName,
     quantity: item.quantity,
+    requested_quantity: item.requestedQuantity || item.quantity,
+    delivered_quantity: Math.max(0, Number(item.deliveredQuantity) || 0),
+    fulfillment_status: item.fulfillmentStatus || "requested",
+    unavailable_reason: item.unavailableReason || "",
+    substitution_product_id: item.substitutionProductId || null,
     unit: item.unit,
     notes: item.notes,
     original_text: item.originalText,
@@ -423,7 +446,9 @@ function changeToRow(change, requisitionId, workspaceId) {
     new_value: change.newValue || null,
     changed_at: change.changedAt,
     changed_by: change.changedBy || activeContext?.displayName || "",
-    changed_by_user_id: change.changedByUserId || activeContext?.userId
+    changed_by_user_id: change.changedByUserId || activeContext?.userId,
+    device_info: change.deviceInfo || "",
+    source: change.source || "web-app"
   };
 }
 

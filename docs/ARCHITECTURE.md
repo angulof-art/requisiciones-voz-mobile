@@ -12,6 +12,7 @@ externos, pruebas con Node y migraciones SQL separadas.
 - `src/catalog.js`: catalogo maestro, unidades y coincidencias.
 - `src/requisitions.js`: pedidos, validaciones, numeracion, cambios y combinacion
   segura del historial local/remoto.
+- `src/workflow.js`: maquina de estados, prioridades y cumplimiento por linea.
 - `src/storage.js`: fachada asincrona, fallback y cola de sincronizacion.
 - `src/db/indexeddb.js`: base local transaccional, stores, indices y paginacion.
 - `src/db/migrate-v10.js`: copia V10 idempotente y verificacion de integridad.
@@ -39,6 +40,11 @@ datos usan el access token del usuario y RLS aplica el contexto organizacional.
 La cola sube cambios automaticamente cuando
 regresa la conexion y la aplicacion descarga y combina los pedidos remotos sin
 sobrescribir borradores locales mas recientes.
+
+El flujo operativo usa origen, destino, prioridad y fecha requerida. Supabase
+valida las transiciones y asigna consecutivos diarios; la bandeja receptora
+permite registrar entregas parciales, faltantes y sustituciones sin ampliar el
+acceso fuera de la organizacion.
 
 IndexedDB version 2 agrega contexto autenticado e indices de organizacion y
 usuario. El pedido actual usa una clave por usuario y organizacion. La cola

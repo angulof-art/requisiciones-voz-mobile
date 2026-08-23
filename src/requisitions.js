@@ -1,12 +1,12 @@
 import { productAllowsUnit } from "./catalog.js?v=2.0.0-beta.2";
+import {
+  WORKFLOW_STATUS,
+  normalizeFulfillmentFields,
+  normalizeWorkflowFields,
+  transitionRequisition
+} from "./workflow.js?v=2.0.0-beta.2";
 
-export const STATUS = {
-  draft: "Borrador",
-  review: "Pendiente de revisión",
-  confirmed: "Confirmado",
-  exported: "Exportado",
-  voided: "Anulado"
-};
+export const STATUS = WORKFLOW_STATUS;
 
 export const COSTA_RICA_TIME_ZONE = "America/Costa_Rica";
 
@@ -16,6 +16,7 @@ export function createRequisition(existing = [], now = new Date()) {
     id: createId("req"),
     requisitionNumber: generateRequisitionNumber(existing, now),
     requestedBy: "",
+    requestedByName: "",
     requestedByUserId: "",
     organizationId: "",
     locationId: "",
@@ -23,6 +24,15 @@ export function createRequisition(existing = [], now = new Date()) {
     destinationDepartmentId: "",
     localOwnerUserId: "",
     revisionNumber: 1,
+    priority: "normal",
+    requiredAt: "",
+    submittedAt: "",
+    receivedAt: "",
+    preparingAt: "",
+    deliveredAt: "",
+    acceptedAt: "",
+    closedAt: "",
+    rejectedAt: "",
     status: "draft",
     originalTranscript: "",
     items: [],
@@ -50,10 +60,12 @@ export function generateRequisitionNumber(existing = [], now = new Date()) {
 
 export function normalizeRequisition(requisition) {
   const now = new Date().toISOString();
+  const requestedBy = String(requisition.requestedBy || requisition.requested_by || requisition.requestedByName || requisition.requested_by_name || "").trim();
   return {
     id: requisition.id || createId("req"),
     requisitionNumber: requisition.requisitionNumber || requisition.requisition_number || "REQ",
-    requestedBy: String(requisition.requestedBy || requisition.requested_by || "").trim(),
+    requestedBy,
+    requestedByName: String(requisition.requestedByName || requisition.requested_by_name || requestedBy).trim(),
     requestedByUserId: requisition.requestedByUserId || requisition.requested_by_user_id || "",
     organizationId: requisition.organizationId || requisition.organization_id || "",
     locationId: requisition.locationId || requisition.location_id || "",
@@ -62,6 +74,7 @@ export function normalizeRequisition(requisition) {
       requisition.destinationDepartmentId || requisition.destination_department_id || "",
     localOwnerUserId: requisition.localOwnerUserId || "",
     revisionNumber: Math.max(1, Number(requisition.revisionNumber || requisition.revision_number) || 1),
+    ...normalizeWorkflowFields(requisition),
     status: requisition.status || "draft",
     originalTranscript: requisition.originalTranscript || requisition.original_transcript || "",
     items: (requisition.items || []).map(normalizeItem),
@@ -114,6 +127,7 @@ export function normalizeItem(item) {
     productName: String(item.productName || item.product_name || "").trim(),
     rawProductName: item.rawProductName || "",
     quantity: Number.isFinite(Number(item.quantity)) ? Number(item.quantity) : null,
+    ...normalizeFulfillmentFields(item),
     unit: item.unit || "",
     notes: item.notes || "",
     originalText: item.originalText || item.original_text || "",
@@ -134,7 +148,9 @@ export function addChange(requisition, action, previousValue, newValue) {
     newValue: compactChangeValue(newValue),
     changedAt: new Date().toISOString(),
     changedBy: requisition.requestedBy || "",
-    changedByUserId: requisition.requestedByUserId || ""
+    changedByUserId: requisition.requestedByUserId || "",
+    deviceInfo: requisition.deviceInfo || getDeviceInfo(),
+    source: "web-app"
   });
   requisition.changes = requisition.changes.slice(0, 100);
   requisition.updatedAt = new Date().toISOString();
@@ -154,6 +170,14 @@ export function validateRequisition(requisition, catalog = [], mode = "confirm")
 
   if (!requisition.items?.length) {
     errors.push("Agregue al menos un producto.");
+  }
+
+  if (mode !== "draft" && requisition.organizationId && !requisition.destinationDepartmentId) {
+    errors.push("Seleccione el departamento destino.");
+  }
+
+  if (mode !== "draft" && requisition.organizationId && !requisition.requiredAt) {
+    errors.push("Seleccione cuándo se necesita el pedido.");
   }
 
   requisition.items?.forEach((item, index) => {
@@ -216,16 +240,14 @@ export function combineDuplicateItems(requisition) {
 export function markConfirmed(requisition) {
   const iso = new Date().toISOString();
   const previous = clone(requisition);
-  requisition.status = "confirmed";
+  transitionRequisition(requisition, "submitted", { now: iso });
   requisition.confirmedAt = requisition.confirmedAt || iso;
-  requisition.updatedAt = iso;
   requisition.confirmedSnapshot = clone(requisition.items);
-  return addChange(requisition, "confirmar", previous, requisition);
+  return addChange(requisition, "enviar", previous, requisition);
 }
 
 export function markExported(requisition) {
   const previous = clone(requisition);
-  requisition.status = requisition.status === "voided" ? "voided" : "exported";
   requisition.exportedAt = new Date().toISOString();
   requisition.updatedAt = requisition.exportedAt;
   return addChange(requisition, "exportar", previous, requisition);
@@ -233,8 +255,7 @@ export function markExported(requisition) {
 
 export function markVoided(requisition) {
   const previous = clone(requisition);
-  requisition.status = "voided";
-  requisition.updatedAt = new Date().toISOString();
+  transitionRequisition(requisition, "voided");
   return addChange(requisition, "anular", previous, requisition);
 }
 
@@ -269,7 +290,9 @@ function normalizeChanges(changes) {
     newValue: compactChangeValue(change.newValue ?? change.new_value),
     changedAt: change.changedAt || change.changed_at || new Date().toISOString(),
     changedBy: change.changedBy || change.changed_by || "",
-    changedByUserId: change.changedByUserId || change.changed_by_user_id || ""
+    changedByUserId: change.changedByUserId || change.changed_by_user_id || "",
+    deviceInfo: change.deviceInfo || change.device_info || "",
+    source: change.source || "web-app"
   }));
 }
 

@@ -68,6 +68,34 @@
             <p class="field-error" id="responsibleError"></p>
           </div>
 
+          <section class="routing-panel" aria-label="Destino y necesidad">
+            <div class="route-summary">
+              <div><span>Desde</span><strong id="originDepartment">Departamento</strong></div>
+              <div><span>Para</span><select id="destinationDepartment" aria-label="Departamento destino"></select></div>
+            </div>
+            <div class="routing-options">
+              <label>Prioridad
+                <select id="priority">
+                  <option value="normal">Normal</option>
+                  <option value="urgent">Urgente</option>
+                  <option value="emergency">Emergencia</option>
+                </select>
+              </label>
+              <label>Se necesita
+                <select id="requiredPreset">
+                  <option value="now">Ahora</option>
+                  <option value="today">Hoy</option>
+                  <option value="tomorrow-am">Mañana AM</option>
+                  <option value="tomorrow-pm">Mañana PM</option>
+                  <option value="custom">Fecha personalizada</option>
+                </select>
+              </label>
+              <label id="customRequiredLabel" hidden>Fecha y hora
+                <input id="customRequiredAt" type="datetime-local" />
+              </label>
+            </div>
+          </section>
+
           <section class="dictation-panel" aria-labelledby="dictationTitle">
             <div class="panel-heading">
               <div>
@@ -127,7 +155,7 @@
           <div class="validation-list" id="validationList"></div>
 
           <div class="order-actions">
-            <button id="confirmButton" type="button">Confirmar pedido</button>
+            <button id="confirmButton" type="button">Enviar pedido</button>
             <div class="export-actions">
               <button class="secondary" id="exportPdfButton" type="button">PDF</button>
               <button class="secondary" id="exportCsvButton" type="button">Excel</button>
@@ -149,6 +177,14 @@
               <option value="all">Todos</option>
               <option value="draft">Borrador</option>
               <option value="review">Pendiente de revisión</option>
+              <option value="submitted">Enviado</option>
+              <option value="received">Recibido por destino</option>
+              <option value="preparing">Preparando</option>
+              <option value="partial">Entrega parcial</option>
+              <option value="delivered">Entregado</option>
+              <option value="accepted">Recibido conforme</option>
+              <option value="closed">Cerrado</option>
+              <option value="rejected">Rechazado</option>
               <option value="confirmed">Confirmado</option>
               <option value="exported">Exportado</option>
               <option value="voided">Anulado</option>
@@ -157,6 +193,25 @@
           </div>
           <div class="history-list" id="historyList"></div>
           <div class="empty-state" id="historyEmpty">No hay pedidos guardados.</div>
+        </section>
+
+        <section class="screen" id="screen-inbox" data-screen="inbox" aria-labelledby="inboxTitle">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Operación</p><h2 id="inboxTitle">Pedidos recibidos</h2></div>
+            <span class="state-badge" id="inboxCount">0 pendientes</span>
+          </div>
+          <div class="filters">
+            <select id="inboxStatus">
+              <option value="active">Pendientes y preparando</option>
+              <option value="submitted">Nuevos</option>
+              <option value="received">Recibidos</option>
+              <option value="preparing">Preparando</option>
+              <option value="partial">Parciales</option>
+              <option value="delivered">Entregados</option>
+            </select>
+          </div>
+          <div class="history-list" id="inboxList"></div>
+          <div class="empty-state" id="inboxEmpty">No hay pedidos para este departamento.</div>
         </section>
 
         <section class="screen" id="screen-catalog" data-screen="catalog" aria-labelledby="catalogTitle">
@@ -313,6 +368,7 @@
       <nav class="bottom-nav" aria-label="Navegación principal">
         <button class="active" data-target="new" type="button">Pedido</button>
         <button data-target="history" type="button">Historial</button>
+        <button data-target="inbox" data-permission="requisitions.receive" type="button">Pendientes</button>
         <button data-target="catalog" type="button">Catálogo</button>
         <button data-target="profile" type="button">Perfil</button>
         <button data-target="config" data-permission="config.technical" type="button">Config</button>

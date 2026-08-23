@@ -220,6 +220,9 @@ backfill V10, RLS de aislamiento y retiro de anon.
 
 ### Fase 4 - Requisiciones V2
 
+Estado: implementada y validada en codigo; prueba E2E multicuenta pendiente del
+bootstrap de usuarios reales.
+
 Modelo operacional, transiciones validas, destino, prioridad, fecha requerida,
 recepcion y estado por linea.
 

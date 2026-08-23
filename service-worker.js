@@ -23,6 +23,7 @@ const ASSETS = [
   `./src/storage.js?${APP_ASSET_QUERY}`,
   `./src/supabase.js?${APP_ASSET_QUERY}`,
   `./src/version.js?${APP_ASSET_QUERY}`,
+  `./src/workflow.js?${APP_ASSET_QUERY}`,
   `./vendor/supabase.js?${APP_ASSET_QUERY}`,
   `./manifest.webmanifest?${APP_ASSET_QUERY}`,
   `./icon.svg?${APP_ASSET_QUERY}`
