@@ -60,6 +60,25 @@ const switched = selectActiveContext(
 assert.equal(switched.locationId, locationA2);
 assert.equal(switched.departmentId, departmentA2);
 
+const requesterSelection = selectActiveContext(
+  {
+    ...requester,
+    organizations: [{ id: orgA, name: "A" }],
+    organization: { id: orgA, name: "A" },
+    locations: [{ id: locationA, organization_id: orgA, name: "Sede A" }],
+    location: { id: locationA, organization_id: orgA, name: "Sede A" },
+    departments: [{ id: departmentA, organization_id: orgA, location_id: locationA, name: "Cocina" }],
+    directoryDepartments: [
+      { id: departmentA, organization_id: orgA, location_id: locationA, name: "Cocina" },
+      { id: departmentA2, organization_id: orgA, location_id: locationA, name: "Bodega" }
+    ],
+    department: { id: departmentA, organization_id: orgA, location_id: locationA, name: "Cocina" }
+  },
+  { organizationId: orgA, locationId: locationA, departmentId: departmentA }
+);
+assert.deepEqual(requesterSelection.departmentIds, [departmentA]);
+assert.deepEqual(requesterSelection.directoryDepartments.map((entry) => entry.id), [departmentA, departmentA2]);
+
 console.log("Auth and permissions smoke OK");
 
 function makeContext({ roles, userId }) {

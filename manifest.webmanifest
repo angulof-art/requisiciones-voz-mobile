@@ -2,7 +2,7 @@
   "name": "Pedidos por Voz",
   "short_name": "Pedidos Voz",
   "description": "Aplicacion movil para pedidos y requisiciones por voz.",
-  "start_url": "./?v=2.0.0-beta.4",
+  "start_url": "./?v=2.0.0-beta.5",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f8fafc",

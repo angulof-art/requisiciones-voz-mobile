@@ -1,189 +1,151 @@
 # Auditoria de cierre de produccion
 
-Fecha: 23/08/2026  
+Fecha: 23/08/2026
+
 Proyecto: `angulof-art/requisiciones-voz-mobile`
 
-## 1. Commit inicial
+Baseline: `2.0.0-beta.4` en `bdef7724ef4bb251942791530d9bd7df155d6ca5`
 
-`c40b2469e39f4f8927d3176e5fd333446da36869` sobre `main`, arbol limpio y
-version `2.0.0-beta.3`.
+## Estado
 
-## 2. Commit final
+**NOT READY** para `2.0.0-rc.1`. La entrega queda en `2.0.0-beta.5`.
 
-El commit final es el `HEAD` publicado de `2.0.0-beta.4`. Su SHA se registra en
-el informe de entrega para evitar una referencia circular dentro del propio
-commit.
+Los bloqueos criticos de cuentas multirrol y acceso anonimo fueron cerrados.
+Solo queda pendiente una ejecucion manual completa de offline autenticado y
+cross-user en navegador/dispositivo real. La automatizacion IndexedDB A -> B ->
+A pasa, pero no se convierte artificialmente en evidencia manual.
 
-## 3. Version
+## Supabase real
 
-`2.0.0-beta.4`. No se promovio a `2.0.0-rc.1` porque quedan bloqueos criticos
-de validacion multirrol y acceso anonimo.
+Auditoria previa al cierre:
 
-## 4. Auth real
+- 5 usuarios Auth confirmados y 5 perfiles.
+- Aloft San Jose: 1 organizacion, 1 sede y 10 departamentos.
+- 327 productos, 11 requisiciones, 64 lineas y 102 cambios antes del E2E.
+- Roles configurados: administrator, manager, requester y receiver.
+- La migracion `disable_demo_anon_access` no estaba aplicada al iniciar.
 
-Supabase registra logins email/password exitosos para las dos cuentas, refresh
-de token y revocacion de token. La restauracion, refresh y logout tambien pasan
-la suite local. No se introdujeron contrasenas en codigo ni en el informe.
+Se crearon tres identidades claramente QA mediante Supabase Dashboard. Sus
+contrasenas temporales no se guardaron en Git, documentos ni logs. Se asignaron
+manager, requester/Cocina y receiver/Bodega dentro de Aloft San Jose.
 
-No se pudo repetir login interactivo de todos los roles durante esta auditoria
-porque no existen credenciales operativas para requester, receiver y manager.
+## Matriz multirrol
 
-## 5. Usuarios validados
+Con sesiones email/password distintas:
 
-- Dos usuarios Auth confirmados y dos perfiles activos.
-- Un usuario con membership activa en Aloft San Jose y rol `administrator`.
-- El segundo usuario no tiene membership; correctamente obtiene cero
-  organizaciones, sedes, departamentos, productos y requisiciones.
-- No se asigno acceso artificial al segundo perfil.
-
-## 6. Roles
-
-`administrator` fue validado con contexto real de usuario. No existen
-memberships reales para `manager`, `requester` o `receiver`, por lo que esos
-roles no pueden declararse validados.
-
-## 7. RLS matrix
-
-| Prueba | Resultado |
+| Comprobacion | Resultado |
 | --- | --- |
-| Admin lee organizacion, sede, departamentos, catalogo y pedidos propios | PASS |
-| Admin no ve ni actualiza una organizacion QA ajena | PASS |
-| Usuario sin membership no ve datos organizacionales | PASS |
-| Cambio malicioso de `organization_id` | DENIED por RLS |
-| Cambio malicioso de `location_id` | DENIED por RLS |
-| Cambio malicioso de `department_id` | DENIED por constraint |
-| Cambio malicioso de `destination_department_id` | DENIED por RLS |
-| `requested_by_user_id` sin membership | DENIED por trigger |
-| Requester real | BLOCKED: no existe cuenta asignada |
-| Receiver real | BLOCKED: no existe cuenta asignada |
-| Manager real | BLOCKED: no existe cuenta asignada |
+| Administrator: contexto, Admin y Reportes | PASS |
+| Manager: login, contexto, catalogo y reportes | PASS |
+| Requester: login, Cocina, catalogo y creacion | PASS |
+| Receiver: login, Bodega, entrada y fulfillment | PASS |
+| Requester administra catalogo/organizacion/roles | DENIED |
+| Receiver crea pedidos o administra usuarios | DENIED |
+| Manager escala a administrator | DENIED |
+| Usuario Aloft accede a organizacion QA | DENIED |
+| Usuario QA accede a Aloft | DENIED |
 
-Los registros temporales `QA ONLY - RC Isolation` fueron eliminados al terminar
-la prueba y se verifico que no quedaran restos.
+La organizacion temporal `QA ONLY - RC Isolation`, su sede, departamento,
+producto y memberships fueron eliminados. Las tres cuentas QA se conservaron
+desactivadas junto con sus memberships para mantener trazabilidad.
 
-## 8. Workflow E2E
+## IDOR y BOLA
 
-La maquina de estados, timestamps, fulfillment, auditoria y revision pasan sus
-pruebas automatizadas. El servidor rechazo `draft -> delivered`; sus funciones
-tambien reportan como invalidas `submitted -> closed` y `closed -> preparing`.
+Con token requester real se intentaron cambios directos de `organization_id`,
+`location_id` y `requested_by_user_id`; todos fueron rechazados por
+RLS/constraints/triggers. Tambien se comprobo aislamiento de organizacion en
+ambos sentidos. La cobertura previa de `department_id` y
+`destination_department_id` continua verde.
 
-El flujo real Requester/Cocina -> Receiver/Bodega -> Requester no pudo
-ejecutarse por falta de las memberships requeridas. Estado: **BLOCKED**.
+## Workflow E2E
 
-## 9. Anonymous access
+Pedido QA: `req-rc-e2e-1787516004122`.
 
-El corte `202608220008_disable_demo_anon_access.sql` no fue aplicado. La prueba
-remota actual confirma que `anon` ve 327 productos, 11 requisiciones, 64 lineas
-y 102 cambios, y conserva privilegios INSERT/UPDATE/DELETE. Es un riesgo
-critico conocido.
+- Requester/Cocina creo tres lineas y envio a Bodega.
+- Receiver/Bodega ejecuto submitted -> received -> preparing -> partial -> delivered.
+- Tomate: 5 kg solicitados, 4 kg entregados, estado parcial.
+- Cebollin: sin existencia y razon registrada.
+- Pechuga: entrega completa.
+- Requester ejecuto delivered -> accepted -> closed.
+- Resultado remoto: `closed`, revision 8, tres lineas, siete transiciones,
+  dos actores y todos los timestamps obligatorios.
+- `draft -> delivered`, `submitted -> closed` y `closed -> preparing`: DENIED.
 
-No se retiro `anon` porque Auth/RLS/workflow multirrol no estan validados y el
-corte prematuro puede interrumpir la operacion existente.
+Durante el flujo se detecto y corrigio un bloqueo de UI: requester solo recibia
+su departamento propio como directorio. Ahora `directoryDepartments` mantiene
+todos los destinos de la organizacion mientras `departments/departmentIds`
+continuan limitando el origen autorizado.
 
-## 10. IndexedDB cross-user
+## Anonymous access
 
-PASS automatizado A -> B -> A para requisiciones, pedido actual, cola de sync,
-configuracion, plantillas/favoritos y nombres recientes. La configuracion se
-separa por usuario y organizacion. Los valores V10 sin scope se conservan y el
-primer administrador puede reclamarlos sin borrarlos.
+Antes: 327 productos, 11 requisiciones, 64 lineas y 102 cambios visibles y con
+escritura anonima.
 
-## 11. Offline
+Despues de aplicar `202608220008_disable_demo_anon_access.sql`:
 
-PASS automatizado para persistencia, reapertura, cola, backoff, fallback y
-errores de escritura. La secuencia completa login real -> offline -> reinicio
--> reconexion queda pendiente de dispositivos y credenciales multirrol.
+| Operacion anon | Resultado |
+| --- | --- |
+| SELECT products | 0 |
+| SELECT requisitions | 0 |
+| SELECT requisition_items | 0 |
+| SELECT requisition_changes | 0 |
+| INSERT/UPDATE/DELETE product | DENIED |
+| INSERT/UPDATE/DELETE requisition | DENIED |
 
-## 12. Conflicts
+No quedan policies ni grants `anon` sobre esas tablas, directorio,
+memberships o `product_alias_learning`. Una sesion administrator siguio
+leyendo catalogo y pedidos despues del corte.
 
-PASS automatizado. La actualizacion compara `revision_number`; una revision
-remota distinta produce `sync_conflict` y no sobrescribe silenciosamente.
+La verificacion remota final registro 327 productos, 12 requisiciones, 70
+lineas y 132 cambios. Las tres identidades QA tienen perfil y memberships
+inactivos; sus tres memberships permanecen como evidencia de auditoria. El
+perfil administrator original continua activo.
 
-## 13. Voice accuracy
+## Local, offline y concurrencia
 
-Dataset: 177/177, `100.00 %`. La frase operativa de seis productos produjo seis
-lineas correctas; aguacate quedo marcado para revision porque `und` no coincide
-con su unidad permitida, que es el comportamiento conservador esperado.
+- IndexedDB automatizado A -> B -> A: PASS para pedido actual, historial, cola,
+  favoritos/plantillas, recientes y settings.
+- Persistencia, reapertura, fallback y backoff: PASS.
+- Conflicto por `revision_number`: PASS; devuelve `sync_conflict` sin sobrescribir.
+- Login requester real y persistencia local fueron iniciados, pero la prueba
+  manual completa requester -> receiver -> requester fue interrumpida por el
+  control externo del navegador. Queda como unico bloqueo del RC.
 
-## 14. Dashboard
+## Voice y exports
 
-KPIs, faltantes, sustituciones, tiempos y agrupacion por departamento pasan
-pruebas. Los filtros de fecha, sede, departamento y estado tienen cobertura
-automatica. No se valido visualmente el dashboard con un manager real.
+- Voice Engine: 177/177, 100.00 %.
+- PDF, XLSX, CSV y Share: PASS con parcial, faltante, sustitucion y notas.
+- 5.000 requisiciones simuladas: PASS en la suite de readiness.
 
-## 15. Exports
+## Advisors
 
-PDF, XLSX, CSV y texto de Web Share pasan pruebas con entrega parcial, falta de
-existencia, sustitucion y observaciones. La hoja principal XLSX conserva solo
-Producto/Cantidad/Unidad de compra; la segunda hoja contiene el detalle
-operativo. El PDF se genera como binario `%PDF-1.4`.
+Security Advisor:
 
-## 16. Security scan
+- INFO: `requisition_daily_sequences` tiene RLS sin policy, intencional porque
+  no admite acceso directo.
+- WARN aceptado: `public.next_requisition_number(uuid)` es SECURITY DEFINER.
+  PUBLIC y anon no ejecutan; authenticated si; el helper valida permiso con
+  `auth.uid()` y `search_path` es vacio.
+- WARN MEDIUM: Leaked Password Protection desactivado. Supabase lo ofrece en
+  plan Pro o superior; el proyecto actual es Free.
 
-PASS: 80 archivos rastreados, sin secretos privados ni `service_role` en el
-frontend. Data API envia la publishable key como `apikey` y el access token del
-usuario como `Authorization: Bearer`.
+Performance Advisor no informa `unindexed_foreign_keys`. Solo quedan indices
+nuevos aun sin uso. Las tablas `inventory_*` no fueron modificadas.
 
-CSP conserva `object-src 'none'` y `base-uri 'self'`. Login no presenta overflow
-horizontal en 320, 360, 390, 768 y 1366 px.
+## Migraciones
 
-## 17. Security Advisor
+Supabase y Git contienen:
 
-- INFO: `requisition_daily_sequences` tiene RLS sin policy. Es intencional: no
-  tiene acceso directo del cliente y se usa mediante RPC autorizada.
-- WARN: Leaked Password Protection esta desactivado. Debe activarse en Supabase
-  Dashboard -> Auth -> Providers -> Email -> Prevent use of leaked passwords.
-  La funcion requiere plan Pro o superior. Referencia:
-  https://supabase.com/docs/guides/auth/password-security
-- WARN: el RPC publico `next_requisition_number` es `SECURITY DEFINER` y puede
-  ejecutarlo `authenticated`. Es intencional: `anon`/`PUBLIC` estan revocados,
-  el helper privado exige `requisitions.create`, usa `auth.uid()` y el wrapper
-  conserva `search_path` vacio. No se concedio acceso al esquema privado.
+- `add_foreign_key_indexes`
+- `secure_requisition_scope_trigger`
+- `enforce_requisition_scope_integrity`
+- `secure_requisition_number_wrapper`
+- `disable_demo_anon_access`
 
-Las funciones `SECURITY DEFINER` auditadas tienen `search_path` vacio. Los
-triggers privados no son ejecutables directamente por `PUBLIC`, `anon` ni
-`authenticated`. El wrapper publico de numeracion solo permite
-`authenticated` y conserva autorizacion interna.
+## Criterio pendiente
 
-## 18. Performance Advisor
-
-La migracion de indices FK fue aplicada y el advisor ya no informa claves
-foraneas sin indice. Solo quedan avisos INFO de indices sin uso, esperables en
-tablas nuevas. Los indices `inventory_*` pertenecen a otro sistema y no fueron
-modificados. El reporte de 5.000 pedidos completo en 1450.3 ms.
-
-## 19. Migraciones
-
-Supabase registra `add_foreign_key_indexes`, `secure_requisition_scope_trigger`,
-`enforce_requisition_scope_integrity` y `secure_requisition_number_wrapper`.
-Los equivalentes estan versionados en `supabase/migrations`. Tambien se agrego
-el archivo idempotente `202608030004_fix_requisition_changes_upsert_grants.sql`
-para representar la migracion historica remota. La unica migracion
-deliberadamente pendiente es `202608220008_disable_demo_anon_access.sql`.
-
-La RPC de numeracion genero 20/20 numeros unicos dentro de una transaccion
-revertida; un usuario sin membership fue rechazado.
-
-## 20. Riesgos pendientes
-
-- CRITICAL: `anon` aun puede leer y escribir datos productivos V10.
-- CRITICAL: no existen cuentas/memberships reales de requester, receiver y
-  manager para validar RLS y workflow E2E.
-- HIGH: falta la prueba offline/sync autenticada en dos dispositivos reales.
-- MEDIUM: Leaked Password Protection sigue desactivado.
-- LOW: la precision acustica final depende del navegador, microfono y ruido.
-
-Pasos obligatorios antes de RC:
-
-1. Crear o asignar memberships reales y controladas para requester, receiver y manager.
-2. Ejecutar `tools/rls-matrix.mjs` con cinco sesiones autorizadas.
-3. Completar workflow Cocina -> Bodega -> Cocina y prueba offline/reconexion.
-4. Aplicar `202608220008_disable_demo_anon_access.sql`.
-5. Verificar como `anon`: conteos cero y sin INSERT/UPDATE/DELETE.
-6. Repetir advisors y toda la suite.
-
-## 21. Estado final
+Antes de promover a RC, ejecutar `Run cross-user local test` desde
+`tools/rc-live-harness.html` con las cuentas QA reactivadas y completar tambien
+una desconexion fisica de red, cierre/reapertura y sincronizacion. Hasta entonces:
 
 **NOT READY**
-
-La beta es mas segura y consistente, pero no cumple los criterios obligatorios
-para `2.0.0-rc.1`. Mantener `2.0.0-beta.4` hasta cerrar los riesgos criticos.

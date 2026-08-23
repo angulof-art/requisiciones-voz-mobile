@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RC live security harness</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+    label { display: block; margin: .75rem 0; }
+    input { width: 100%; box-sizing: border-box; padding: .65rem; }
+    button { padding: .7rem 1rem; }
+    pre { white-space: pre-wrap; background: #111; color: #eee; padding: 1rem; min-height: 10rem; }
+  </style>
+</head>
+<body>
+  <h1>RC live security harness</h1>
+  <p>Las credenciales permanecen en memoria y no se almacenan.</p>
+  <label>Manager email <input id="managerEmail" type="email" autocomplete="off"></label>
+  <label>Manager password <input id="managerPassword" type="password" autocomplete="off"></label>
+  <label>Requester email <input id="requesterEmail" type="email" autocomplete="off"></label>
+  <label>Requester password <input id="requesterPassword" type="password" autocomplete="off"></label>
+  <label>Receiver email <input id="receiverEmail" type="email" autocomplete="off"></label>
+  <label>Receiver password <input id="receiverPassword" type="password" autocomplete="off"></label>
+  <button id="run" type="button">Run live tests</button>
+  <button id="runIsolation" type="button">Run isolation tests</button>
+  <button id="runAnon" type="button">Run anon cutoff tests</button>
+  <button id="runCrossUser" type="button">Run cross-user local test</button>
+  <pre id="output">Ready.</pre>
+  <div id="frameHost"></div>
+  <script type="module" src="./rc-live-harness.js"></script>
+</body>
+</html>

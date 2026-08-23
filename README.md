@@ -2,7 +2,7 @@
 
 Aplicacion web movil para crear pedidos o requisiciones por voz.
 
-Version actual: **2.0.0-beta.4**. La estrategia completa de evolucion y
+Version actual: **2.0.0-beta.5**. La estrategia completa de evolucion y
 migracion segura esta en `V2_IMPLEMENTATION_PLAN.md`.
 
 ## Funciones incluidas

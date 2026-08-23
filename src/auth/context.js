@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "./client.js?v=2.0.0-beta.4";
+import { getSupabaseClient } from "./client.js?v=2.0.0-beta.5";
 
 export class UserContextError extends Error {
   constructor(message, code = "context_error") {
@@ -90,6 +90,7 @@ export async function loadUserContext(session, cachedContext = null) {
     locations,
     locationId: location.id,
     location,
+    directoryDepartments: organizationDepartments,
     departments,
     departmentIds: departments.map((entry) => entry.id),
     departmentId: department.id,
@@ -115,6 +116,8 @@ export function selectActiveContext(context, selection = {}) {
     location,
     departmentId: department.id,
     department,
+    directoryDepartments: (context.directoryDepartments || context.departments)
+      .filter((entry) => entry.organization_id === organization.id),
     departmentIds: departments.map((entry) => entry.id)
   };
 }
