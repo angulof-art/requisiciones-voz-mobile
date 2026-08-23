@@ -15,6 +15,7 @@ externos, pruebas con Node y migraciones SQL separadas.
 - `src/storage.js`: persistencia local y cola de sincronizacion.
 - `src/exporters.js`: PDF imprimible, Excel `.xlsx` y CSV compatible con Google Sheets.
 - `src/config.js`: configuracion publica del proyecto Supabase del piloto.
+- `src/version.js`: version visible y referencia unica para cache busting.
 - `src/supabase.js`: REST seguro con publishable key, sin secretos, con carga y
   descarga del historial.
 - `src/app.js`: UI, voz, edicion, historial, catalogo y configuracion.
@@ -30,6 +31,13 @@ La sincronizacion se puede desactivar por dispositivo. La interfaz expone
 operaciones independientes para probar la conexion, subir el estado local y
 descargar el estado remoto; la descarga reutiliza la misma combinacion segura
 del historial y nunca vacia la base local antes de incorporar la nube.
+
+## Actualizacion PWA
+
+La version se toma de `package.json` y `pnpm run version:sync` actualiza los
+recursos versionados. El service worker instala la nueva cache en espera y la
+interfaz solicita confirmacion antes de activarla. El cambio de controlador
+recarga una sola vez para evitar mezclar modulos de versiones diferentes.
 
 ## Supuestos
 

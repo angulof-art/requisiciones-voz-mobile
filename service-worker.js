@@ -1,5 +1,6 @@
-const APP_VERSION = "v10";
-const APP_ASSET_QUERY = "v=10";
+const WORKER_URL = new URL(self.location.href);
+const APP_VERSION = WORKER_URL.searchParams.get("v") || "development";
+const APP_ASSET_QUERY = `v=${encodeURIComponent(APP_VERSION)}`;
 const CACHE_PREFIX = "requisiciones-voz-mobile-";
 const CACHE_NAME = `${CACHE_PREFIX}${APP_VERSION}`;
 const ASSETS = [
@@ -15,13 +16,17 @@ const ASSETS = [
   `./src/requisitions.js?${APP_ASSET_QUERY}`,
   `./src/storage.js?${APP_ASSET_QUERY}`,
   `./src/supabase.js?${APP_ASSET_QUERY}`,
+  `./src/version.js?${APP_ASSET_QUERY}`,
   `./manifest.webmanifest?${APP_ASSET_QUERY}`,
   `./icon.svg?${APP_ASSET_QUERY}`
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
-  self.skipWaiting();
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {

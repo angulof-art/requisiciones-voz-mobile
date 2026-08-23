@@ -206,6 +206,33 @@ h2 {
   padding-top: 0.75rem;
 }
 
+.update-banner {
+  position: sticky;
+  top: 67px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  border: 1px solid #9ed7ba;
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  background: #effbf4;
+  color: var(--brand-dark);
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.update-banner[hidden] {
+  display: none;
+}
+
+.update-banner button {
+  min-height: 38px;
+  padding: 0.45rem 0.75rem;
+}
+
 .order-screen {
   padding-bottom: 0.5rem;
 }
@@ -277,6 +304,22 @@ h2 {
 .cloud-heading h3,
 .cloud-detail {
   margin-bottom: 0;
+}
+
+.app-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.app-meta strong {
+  color: var(--ink);
 }
 
 .cloud-grid {
@@ -744,6 +787,41 @@ h2 {
   overflow: hidden;
   clip: rect(0 0 0 0);
   border: 0;
+}
+
+@media (max-width: 360px) {
+  .compact-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .compact-summary h2 {
+    overflow-wrap: normal;
+    white-space: nowrap;
+  }
+
+  .summary-actions {
+    justify-content: space-between;
+  }
+
+  .dictation-composer {
+    grid-template-columns: minmax(0, 1fr) 74px;
+    gap: 0.5rem;
+  }
+
+  .voice-button {
+    width: 74px;
+  }
+
+  .dictation-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dictation-footer .text-action {
+    align-self: flex-end;
+  }
 }
 
 @media (min-width: 620px) {

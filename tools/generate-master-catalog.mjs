@@ -381,8 +381,8 @@ function buildJavascript(products) {
 function adoptMasterCatalog() {
   const path = "src/catalog.js";
   let source = readFileSync(path, "utf8");
-  if (!source.includes('import { MASTER_CATALOG } from "./catalog-data.js?v=10";')) {
-    source = `import { MASTER_CATALOG } from "./catalog-data.js?v=10";\n\n${source}`;
+  if (!source.includes('import { MASTER_CATALOG } from "./catalog-data.js?v=2.0.0-beta.1";')) {
+    source = `import { MASTER_CATALOG } from "./catalog-data.js?v=2.0.0-beta.1";\n\n${source}`;
   }
   source = source.replace(
     /export const DEFAULT_CATALOG = \[[\s\S]*?\n\];\n\nexport function normalizeText/,

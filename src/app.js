@@ -3,9 +3,9 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=10";
-import { downloadExcel, printPdf } from "./exporters.js?v=10";
-import { parseRequisitionText } from "./parser.js?v=10";
+} from "./catalog.js?v=2.0.0-beta.1";
+import { downloadExcel, printPdf } from "./exporters.js?v=2.0.0-beta.1";
+import { parseRequisitionText } from "./parser.js?v=2.0.0-beta.1";
 import {
   STATUS,
   addChange,
@@ -23,7 +23,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=10";
+} from "./requisitions.js?v=2.0.0-beta.1";
 import {
   clearCurrentRequisition,
   loadAppState,
@@ -35,7 +35,7 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=10";
+} from "./storage.js?v=2.0.0-beta.1";
 import {
   classifySupabaseError,
   fetchRequisitionsFromSupabase,
@@ -44,7 +44,8 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=10";
+} from "./supabase.js?v=2.0.0-beta.1";
+import { APP_VERSION } from "./version.js?v=2.0.0-beta.1";
 
 const state = loadAppState();
 const undoStack = [];
@@ -63,10 +64,15 @@ let autoSaveTimer = null;
 let autoSyncTimer = null;
 let supabaseConnectionState = "checking";
 let isCloudSyncing = false;
+let deferredInstallPrompt = null;
+let waitingServiceWorker = null;
+let serviceWorkerReloading = false;
 
 const els = {
   screenTitle: document.querySelector("#screenTitle"),
   connectionBadge: document.querySelector("#connectionBadge"),
+  updateBanner: document.querySelector("#updateBanner"),
+  updateAppButton: document.querySelector("#updateAppButton"),
   screens: document.querySelectorAll(".screen"),
   navButtons: document.querySelectorAll(".bottom-nav button"),
   requestedBy: document.querySelector("#requestedBy"),
@@ -118,6 +124,8 @@ const els = {
   catalogList: document.querySelector("#catalogList"),
   hourFormat: document.querySelector("#hourFormat"),
   textSize: document.querySelector("#textSize"),
+  appVersion: document.querySelector("#appVersion"),
+  installAppButton: document.querySelector("#installAppButton"),
   supabaseUrl: document.querySelector("#supabaseUrl"),
   supabaseKey: document.querySelector("#supabaseKey"),
   supabaseWorkspace: document.querySelector("#supabaseWorkspace"),
@@ -141,6 +149,8 @@ const els = {
 boot();
 
 function boot() {
+  els.appVersion.textContent = APP_VERSION;
+  setupInstallPrompt();
   populateUnitSelects();
   setupSpeechRecognition();
   bindEvents();
@@ -203,6 +213,8 @@ function bindEvents() {
   els.testSupabaseButton.addEventListener("click", testSupabaseConnection);
   els.uploadSupabaseButton.addEventListener("click", uploadLocalToSupabase);
   els.downloadSupabaseButton.addEventListener("click", downloadCloudToLocal);
+  els.updateAppButton.addEventListener("click", applyAppUpdate);
+  els.installAppButton.addEventListener("click", installApp);
 
   window.addEventListener("online", () => {
     supabaseConnectionState = "checking";
@@ -932,7 +944,7 @@ function setupSpeechRecognition() {
       return;
     }
     if (error === "aborted" && !dictationSessionActive) return;
-    els.speechStatus.textContent = `Error de micrófono: ${error}.`;
+    els.speechStatus.textContent = describeSpeechError(error);
     dictationSessionActive = false;
     clearDictationTimers();
     stopSpeechUi();
@@ -1113,6 +1125,19 @@ function stopSpeechUi() {
   els.voiceButton.setAttribute("aria-pressed", "false");
   els.voicePrimary.textContent = "Dictar";
   els.voiceSecondary.textContent = "Toque para hablar";
+}
+
+function describeSpeechError(error) {
+  const messages = {
+    "not-allowed": "No se autorizó el micrófono. Revise el permiso del navegador o escriba el pedido.",
+    "service-not-allowed": "El navegador bloqueó el reconocimiento de voz. Puede escribir el pedido.",
+    "audio-capture": "No se encontró un micrófono disponible. Puede escribir el pedido.",
+    network: "La voz necesita conexión en este navegador. El pedido manual sigue disponible.",
+    "language-not-supported": "Este navegador no admite reconocimiento en español de Costa Rica.",
+    "no-speech": "No se detectó voz. Toque Dictar e inténtelo nuevamente.",
+    aborted: "El dictado se detuvo. Puede continuar cuando esté listo."
+  };
+  return messages[error] || "No fue posible usar el micrófono. Puede escribir el pedido manualmente.";
 }
 
 function render() {
@@ -1370,10 +1395,65 @@ function toast(message) {
   toast.timer = window.setTimeout(() => els.toast.classList.remove("visible"), 3200);
 }
 
-function registerServiceWorker() {
-  if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("./service-worker.js?v=10").catch(() => {});
+function setupInstallPrompt() {
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    els.installAppButton.hidden = false;
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    els.installAppButton.hidden = true;
+    toast("Aplicación instalada correctamente.");
+  });
+}
+
+async function installApp() {
+  if (!deferredInstallPrompt) return;
+  await deferredInstallPrompt.prompt();
+  const choice = await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  els.installAppButton.hidden = true;
+  if (choice?.outcome !== "accepted") toast("La instalación quedó cancelada.");
+}
+
+async function registerServiceWorker() {
+  if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (serviceWorkerReloading) return;
+    serviceWorkerReloading = true;
+    window.location.reload();
+  });
+  try {
+    const registration = await navigator.serviceWorker.register(
+      `./service-worker.js?v=${encodeURIComponent(APP_VERSION)}`
+    );
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      showAppUpdate(registration.waiting);
+    }
+    registration.addEventListener("updatefound", () => {
+      const worker = registration.installing;
+      if (!worker) return;
+      worker.addEventListener("statechange", () => {
+        if (worker.state === "installed" && navigator.serviceWorker.controller) {
+          showAppUpdate(worker);
+        }
+      });
+    });
+  } catch {
+    // Offline mode remains usable even if service worker registration fails.
   }
+}
+
+function showAppUpdate(worker) {
+  waitingServiceWorker = worker;
+  els.updateBanner.hidden = false;
+}
+
+function applyAppUpdate() {
+  if (!waitingServiceWorker) return;
+  els.updateAppButton.disabled = true;
+  waitingServiceWorker.postMessage({ type: "SKIP_WAITING" });
 }
 
 function escapeHtml(value) {

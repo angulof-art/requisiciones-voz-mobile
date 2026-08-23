@@ -2,6 +2,9 @@
 
 Aplicacion web movil para crear pedidos o requisiciones por voz.
 
+Version actual: **2.0.0-beta.1**. La estrategia completa de evolucion y
+migracion segura esta en `V2_IMPLEMENTATION_PLAN.md`.
+
 ## Funciones incluidas
 
 - Responsable obligatorio antes de confirmar o exportar.
@@ -25,6 +28,8 @@ Aplicacion web movil para crear pedidos o requisiciones por voz.
   `Unidad de compra`.
 - CSV compatible con Google Sheets disponible desde el modulo de exportacion.
 - PWA offline con indicador de conexion y cola de sincronizacion.
+- Aviso de nueva version, actualizacion controlada e instalacion cuando el
+  navegador ofrece PWA instalable.
 - Migracion SQL para Supabase.
 
 ## Ejecucion local
@@ -51,6 +56,14 @@ pnpm run lint
 pnpm test
 pnpm run build
 ```
+
+La version de `package.json` es la fuente de verdad. Despues de cambiarla:
+
+```powershell
+pnpm run version:sync
+```
+
+`test` y `build` fallan si HTML, manifest o imports conservan otra version.
 
 ## Catalogo
 
@@ -121,3 +134,10 @@ raiz publica.
 - Envio por correo o WhatsApp luego de confirmacion manual.
 - Importacion XLSX nativa.
 - Firma digital del receptor.
+
+## Seguridad del piloto
+
+La sincronizacion publicada todavia utiliza la migracion anon de demostracion.
+No debe usarse con datos reales de varias organizaciones. Supabase Auth, el
+backfill de los datos V10 y el retiro coordinado de esas politicas corresponden
+a la Fase 3 documentada en `V2_IMPLEMENTATION_PLAN.md`.

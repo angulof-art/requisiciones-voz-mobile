@@ -1,4 +1,4 @@
-import { normalizeRequisition } from "./requisitions.js?v=10";
+import { normalizeRequisition } from "./requisitions.js?v=2.0.0-beta.1";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];

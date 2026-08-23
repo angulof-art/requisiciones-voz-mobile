@@ -1,14 +1,15 @@
 {
   "name": "requisiciones-voz-mobile",
-  "version": "1.0.0",
+  "version": "2.0.0-beta.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "node --check src/parser.js && node --check src/catalog.js && node --check src/requisitions.js && node --check src/storage.js && node --check src/exporters.js && node --check src/supabase.js && node --check src/app.js",
-    "build": "node tools/static-smoke.mjs",
+    "lint": "node --check src/version.js && node --check src/parser.js && node --check src/catalog.js && node --check src/requisitions.js && node --check src/storage.js && node --check src/exporters.js && node --check src/supabase.js && node --check src/app.js",
+    "build": "node tools/sync-version.mjs --check && node tools/static-smoke.mjs",
     "catalog:sync": "node tools/sync-master-catalog.mjs",
-    "test": "node tools/parser-smoke.mjs && node tools/integration-smoke.mjs && node tools/static-smoke.mjs",
+    "test": "node tools/parser-smoke.mjs && node tools/integration-smoke.mjs && node tools/sync-version.mjs --check && node tools/static-smoke.mjs",
     "test:parser": "node tools/parser-smoke.mjs",
+    "version:sync": "node tools/sync-version.mjs",
     "serve": "node tools/serve.mjs"
   }
 }
