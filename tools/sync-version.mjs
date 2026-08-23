@@ -1,20 +1,24 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
 const checkOnly = process.argv.includes("--check");
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const version = packageJson.version;
+function listJavaScriptFiles(directory, relativeDirectory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const relativePath = join(relativeDirectory, entry.name).replaceAll("\\", "/");
+    if (entry.isDirectory()) {
+      return listJavaScriptFiles(join(directory, entry.name), relativePath);
+    }
+    return entry.isFile() && entry.name.endsWith(".js") ? [relativePath] : [];
+  });
+}
+
 const files = [
   "index.html",
   "manifest.webmanifest",
-  "src/app.js",
-  "src/catalog.js",
-  "src/exporters.js",
-  "src/parser.js",
-  "src/requisitions.js",
-  "src/storage.js",
-  "src/supabase.js",
+  ...listJavaScriptFiles(join(root, "src"), "src"),
   "tools/generate-master-catalog.mjs"
 ];
 
@@ -25,6 +29,12 @@ for (const file of files) {
   let next = current.replace(/\?v=[0-9A-Za-z.-]+/g, `?v=${version}`);
   if (file === "index.html") {
     next = next.replace(/(<strong id="appVersion">)[^<]+/, `$1${version}`);
+  }
+  if (file === "src/auth/client.js") {
+    next = next.replace(
+      /requisiciones-voz-mobile\/[0-9A-Za-z.-]+/g,
+      `requisiciones-voz-mobile/${version}`
+    );
   }
   if (next !== current) {
     changes.push(file);

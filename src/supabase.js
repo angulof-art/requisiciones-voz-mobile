@@ -1,4 +1,4 @@
-import { normalizeRequisition } from "./requisitions.js?v=2.0.0-beta.2";
+import { normalizeRequisition } from "./requisitions.js?v=2.0.0-beta.3";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
@@ -130,7 +130,10 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog) 
   if (activeContext?.permissions?.includes("catalog.manage")) {
     await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
   }
-  const rename = await upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId);
+  const { rename, syncRevision, syncUpdatedAt } = await upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId);
+  requisition.lastSyncedRevision = syncRevision || requisition.revisionNumber;
+  requisition.lastSyncedAt = syncUpdatedAt || new Date().toISOString();
+  requisition.syncStatus = "pending";
   await supabaseRequest(settings, "requisition_items", {
     method: "DELETE",
     query: `requisition_id=eq.${encodeURIComponent(requisition.id)}`,
@@ -150,6 +153,7 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog) 
         .map((change) => changeToRow(change, requisition.id, workspaceId))
     );
   }
+  requisition.syncStatus = "synced";
   return { rename };
 }
 
@@ -206,6 +210,8 @@ export async function fetchRequisitionsFromSupabase(settings) {
   return requisitions.map((row) =>
     normalizeRequisition({
       ...row,
+      lastSyncedRevision: row.revision_number,
+      lastSyncedAt: row.updated_at,
       items: itemsByRequisition.get(row.id) || [],
       changes: changesByRequisition.get(row.id) || [],
       syncStatus: "synced"
@@ -249,14 +255,34 @@ async function upsertRequisitionWithUniqueNumber(settings, requisition, workspac
     }
 
     try {
-      await upsertRows(settings, "requisitions", [requisitionToRow(requisition, workspaceId)]);
-      return rename;
+      const row = requisitionToRow(requisition, workspaceId);
+      if (requisition.lastSyncedRevision) {
+        row.revision_number = Math.max(row.revision_number, requisition.lastSyncedRevision + 1);
+        requisition.revisionNumber = row.revision_number;
+        const updated = await supabaseRequest(settings, "requisitions", {
+          method: "PATCH",
+          query: `id=eq.${encodeURIComponent(requisition.id)}&revision_number=eq.${encodeURIComponent(requisition.lastSyncedRevision)}&select=revision_number,updated_at`,
+          prefer: "return=representation",
+          body: row
+        });
+        if (!updated?.length) throw createSyncConflictError(requisition);
+        return { rename, syncRevision: updated[0].revision_number, syncUpdatedAt: updated[0].updated_at };
+      }
+      await upsertRows(settings, "requisitions", [row]);
+      return { rename, syncRevision: row.revision_number, syncUpdatedAt: row.updated_at };
     } catch (error) {
       if (!isDuplicateRequisitionNumberError(error) || attempt === 3) throw error;
       rename = renameRequisitionAfterConflict(requisition, rename, attempt + 1);
     }
   }
-  return rename;
+  return { rename, syncRevision: requisition.revisionNumber, syncUpdatedAt: requisition.updatedAt };
+}
+
+function createSyncConflictError(requisition) {
+  const error = new Error(`El pedido ${requisition.requisitionNumber} cambió en otro dispositivo.`);
+  error.code = "sync_conflict";
+  error.technical = `revision_conflict:${requisition.id}:expected:${requisition.lastSyncedRevision}`;
+  return error;
 }
 
 async function findRequisitionNumberOwner(settings, workspaceId, requisitionNumber) {
@@ -377,6 +403,13 @@ export async function supabaseRequest(settings, table, options = {}) {
 
 export function classifySupabaseError(error) {
   const technical = String(error.technical || error.message || "").toLowerCase();
+  if (error.code === "sync_conflict" || technical.includes("revision_conflict")) {
+    return {
+      label: "Conflicto de cambios",
+      message: "Este pedido cambió en otro dispositivo. Descargue la versión de la nube y revise antes de continuar.",
+      technical: error.technical || error.message || ""
+    };
+  }
   if (!navigator.onLine || (!error.status && error instanceof TypeError)) {
     return {
       label: "Sin conexión",

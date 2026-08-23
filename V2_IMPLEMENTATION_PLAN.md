@@ -249,8 +249,13 @@ productos, faltantes, sustituciones, departamentos y filtros.
 Fase 8: PDF descargable, XLSX de dos hojas, CSV compatible y Web Share
 implementados.
 
-Fase 9: QA de rendimiento,
-accesibilidad, seguridad, dispositivos, offline y conflictos.
+Fase 9: implementada en `2.0.0-beta.3` con CSP, escaneo de secretos,
+conflictos por revision, paginacion, prueba de 5.000 pedidos, exports y prueba
+visual a 320/390 px. El estado general permanece **NOT READY** porque Supabase
+no tiene usuarios/perfiles y por ello no se ejecutaron la matriz RLS ni el flujo
+E2E multicuenta. El acceso anonimo no se retira hasta completar ese bootstrap.
+
+Checklist detallado: `docs/PRODUCTION_CHECKLIST.md`.
 
 ## 8. Archivos previstos
 

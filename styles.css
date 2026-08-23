@@ -42,13 +42,14 @@ body.text-large {
 
 .auth-shell {
   display: grid;
+  grid-template-columns: minmax(0, 420px);
   min-height: 100dvh;
   place-items: center;
   padding: 1rem;
 }
 
 .login-panel {
-  width: min(100%, 420px);
+  width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 1.2rem;

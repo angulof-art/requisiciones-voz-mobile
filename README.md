@@ -2,7 +2,7 @@
 
 Aplicacion web movil para crear pedidos o requisiciones por voz.
 
-Version actual: **2.0.0-beta.2**. La estrategia completa de evolucion y
+Version actual: **2.0.0-beta.3**. La estrategia completa de evolucion y
 migracion segura esta en `V2_IMPLEMENTATION_PLAN.md`.
 
 ## Funciones incluidas
@@ -33,6 +33,12 @@ migracion segura esta en `V2_IMPLEMENTATION_PLAN.md`.
 - Inicio de sesion por correo y contraseña con restauracion segura de sesion.
 - Organizaciones, sedes, departamentos y permisos por rol protegidos con RLS.
 - Perfil operativo y aislamiento local por usuario/organizacion.
+- Flujo Cocina a Bodega con prioridad, fecha requerida, entregas parciales,
+  faltantes, sustituciones, aceptacion y cierre auditado.
+- Voice Engine V2 con fracciones, contexto, comandos y 177 frases controladas.
+- Dashboard operativo para manager/administrator y paginacion del historial.
+- Deteccion de conflictos por revision para evitar sobrescrituras silenciosas.
+- CSP, escaneo de secretos y suite de preparacion para produccion.
 - Aviso de nueva version, actualizacion controlada e instalacion cuando el
   navegador ofrece PWA instalable.
 - Migracion SQL para Supabase.
@@ -120,6 +126,10 @@ separadas:
 `workspace_id` se conserva solo por compatibilidad V10. La autorizacion usa
 organizacion, sede, departamento, membresias y roles.
 
+El estado de preparacion real esta en `docs/PRODUCTION_CHECKLIST.md`. La version
+`2.0.0-beta.3` no debe promoverse a produccion hasta crear el administrador,
+ejecutar la matriz RLS multicuenta y retirar el acceso anonimo de demostracion.
+
 ## Despliegue
 
 Puede publicarse como sitio estatico en GitHub Pages, Netlify, Vercel, Supabase
@@ -144,3 +154,7 @@ El modelo y el backfill se documentan en `docs/V10_REMOTE_MIGRATION.md`. Las
 politicas, matriz y aislamiento estan en `docs/AUTH_AND_RLS.md`. El acceso anon
 solo debe retirarse despues de probar usuarios reales; el rollback temporal se
 describe en `docs/AUTH_ROLLBACK.md`.
+
+La persistencia, conflictos y recuperacion offline se documentan en
+`docs/OFFLINE_AND_SYNC.md`. El informe consolidado de V2 esta en
+`V2_FINAL_IMPLEMENTATION_REPORT.md`.

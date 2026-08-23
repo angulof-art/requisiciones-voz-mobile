@@ -2,7 +2,7 @@
 
 ## Estrategia
 
-La migracion remota esta separada en ocho archivos:
+La migracion organizacional inicial esta separada en ocho archivos:
 
 1. Crear organizaciones, sedes, departamentos, perfiles, membresias y roles.
 2. Agregar columnas organizacionales sin eliminar columnas V10.
@@ -12,6 +12,11 @@ La migracion remota esta separada en ocho archivos:
 6. Refinar lectura de destinos entre sedes sin ampliar la organizacion.
 7. Permitir destinos activos de la misma organizacion sin ampliar membresias.
 8. Retirar las politicas anonimas de demostracion despues de validar Auth.
+
+Las fases posteriores agregan migraciones independientes para workflow,
+directorio de destinos, alias aprendidos, reportes e indices de FK. El archivo
+de retiro anonimo conserva su posicion logica, pero no se aplica hasta cumplir
+el checklist de produccion.
 
 `workspace_id`, `owner_id`, `requested_by` y `changed_by` permanecen. Los dos
 primeros quedan deprecados para autorizacion; los dos ultimos son snapshots

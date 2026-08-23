@@ -1,5 +1,5 @@
-import { csvCell } from "./catalog.js?v=2.0.0-beta.2";
-import { STATUS, formatDateParts } from "./requisitions.js?v=2.0.0-beta.2";
+import { csvCell } from "./catalog.js?v=2.0.0-beta.3";
+import { STATUS, formatDateParts } from "./requisitions.js?v=2.0.0-beta.3";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 

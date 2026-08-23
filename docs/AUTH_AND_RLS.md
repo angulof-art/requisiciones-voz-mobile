@@ -55,3 +55,11 @@ La matriz obligatoria antes del corte anonimo cubre:
 - Administrador gestiona su organizacion, nunca otra.
 - IDs extranjeros enviados manualmente son rechazados por RLS/FK.
 
+## Estado del piloto
+
+Al 23/08/2026 el proyecto remoto tiene 0 usuarios, 0 perfiles y 0 membresias.
+Por esa razon `tools/rls-matrix.mjs` no se ejecuto con credenciales reales y la
+migracion `202608220008_disable_demo_anon_access.sql` permanece deliberadamente
+sin aplicar. Primero debe completarse `ADMIN_BOOTSTRAP.md`, crear cuentas de dos
+organizaciones y ejecutar la matriz. Ocultar la app tras Auth antes de ese paso
+dejaria al equipo operativo sin acceso.

@@ -4,8 +4,8 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=2.0.0-beta.2";
-import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-beta.2";
+} from "./catalog.js?v=2.0.0-beta.3";
+import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-beta.3";
 import {
   STATUS,
   addChange,
@@ -23,7 +23,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=2.0.0-beta.2";
+} from "./requisitions.js?v=2.0.0-beta.3";
 import {
   clearCurrentRequisition,
   getStorageDiagnostics,
@@ -39,14 +39,14 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=2.0.0-beta.2";
+} from "./storage.js?v=2.0.0-beta.3";
 import {
   claimLegacyLocalData,
   initializeStorage,
   loadCachedAuthContext,
   saveCachedAuthContext,
   setStorageContext
-} from "./storage.js?v=2.0.0-beta.2";
+} from "./storage.js?v=2.0.0-beta.3";
 import {
   classifySupabaseError,
   fetchProductAliases,
@@ -59,26 +59,26 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=2.0.0-beta.2";
-import { getSupabaseClient } from "./auth/client.js?v=2.0.0-beta.2";
-import { loadUserContext, selectActiveContext } from "./auth/context.js?v=2.0.0-beta.2";
-import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-beta.2";
+} from "./supabase.js?v=2.0.0-beta.3";
+import { getSupabaseClient } from "./auth/client.js?v=2.0.0-beta.3";
+import { loadUserContext, selectActiveContext } from "./auth/context.js?v=2.0.0-beta.3";
+import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-beta.3";
 import {
   onAuthStateChange,
   restoreSession,
   signInWithPassword,
   signOut
-} from "./auth/session.js?v=2.0.0-beta.2";
-import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-beta.2";
-import { buildOperationalReport } from "./reports.js?v=2.0.0-beta.2";
+} from "./auth/session.js?v=2.0.0-beta.3";
+import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-beta.3";
+import { buildOperationalReport } from "./reports.js?v=2.0.0-beta.3";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
   resolveRequiredAt,
   transitionRequisition,
   updateItemFulfillment
-} from "./workflow.js?v=2.0.0-beta.2";
-import { APP_VERSION } from "./version.js?v=2.0.0-beta.2";
+} from "./workflow.js?v=2.0.0-beta.3";
+import { APP_VERSION } from "./version.js?v=2.0.0-beta.3";
 
 let state = null;
 let appSession = null;
@@ -105,6 +105,7 @@ let deferredInstallPrompt = null;
 let waitingServiceWorker = null;
 let serviceWorkerReloading = false;
 let localSaveChain = Promise.resolve();
+let historyVisibleLimit = 30;
 
 const els = {
   authGate: document.querySelector("#authGate"),
@@ -167,6 +168,7 @@ const els = {
   historyDate: document.querySelector("#historyDate"),
   historyList: document.querySelector("#historyList"),
   historyEmpty: document.querySelector("#historyEmpty"),
+  historyLoadMore: document.querySelector("#historyLoadMore"),
   favoritesList: document.querySelector("#favoritesList"),
   favoritesEmpty: document.querySelector("#favoritesEmpty"),
   saveTemplateButton: document.querySelector("#saveTemplateButton"),
@@ -382,10 +384,14 @@ function bindEvents() {
   els.itemsList.addEventListener("click", handleItemAction);
 
   [els.historySearch, els.historyStatus, els.historyDate].forEach((input) => {
-    input.addEventListener("input", renderHistory);
-    input.addEventListener("change", renderHistory);
+    input.addEventListener("input", resetAndRenderHistory);
+    input.addEventListener("change", resetAndRenderHistory);
   });
   els.historyList.addEventListener("click", handleHistoryAction);
+  els.historyLoadMore.addEventListener("click", () => {
+    historyVisibleLimit += 30;
+    renderHistory();
+  });
   els.frequentList.addEventListener("click", addQuickProduct);
   els.favoritesList.addEventListener("click", applyFavoriteTemplate);
   els.saveTemplateButton.addEventListener("click", saveCurrentAsTemplate);
@@ -1080,6 +1086,7 @@ async function saveOrderAndQueue() {
 async function autoSaveOrder() {
   state.current.requestedBy = els.requestedBy.value.trim();
   state.current.updatedAt = new Date().toISOString();
+  state.current.revisionNumber = Math.max(1, Number(state.current.revisionNumber) || 1) + 1;
   if (["draft", "review"].includes(state.current.status)) {
     state.current.status = state.current.items.some((item) => item.needsReview) ? "review" : "draft";
   }
@@ -1576,17 +1583,26 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
     renderConnection();
     state.syncQueue = await markSyncQueueSyncing(state.syncQueue);
     await testSupabase(state.settings.supabase);
+    const pendingIds = new Set(state.syncQueue
+      .filter((entry) => entry.type === "requisition" && entry.payload?.id)
+      .map((entry) => entry.payload.id));
     const syncResult = await syncAllToSupabase(
       state.settings.supabase,
-      state.requisitions,
+      state.requisitions.filter((requisition) => pendingIds.has(requisition.id)),
       state.catalog
     );
     if (syncResult.renames.length) {
       const currentRename = syncResult.renames.find((rename) => rename.id === state.current.id);
       if (currentRename) state.current.requisitionNumber = currentRename.requisitionNumber;
-      await saveRequisitions(state.requisitions);
-      await persistCurrent();
     }
+    const syncedCurrent = state.requisitions.find((requisition) => requisition.id === state.current.id);
+    if (syncedCurrent) {
+      state.current.lastSyncedRevision = syncedCurrent.lastSyncedRevision;
+      state.current.lastSyncedAt = syncedCurrent.lastSyncedAt;
+      state.current.syncStatus = syncedCurrent.syncStatus;
+    }
+    await saveRequisitions(state.requisitions);
+    await persistCurrent();
     if (downloadAfter) await refreshHistoryFromSupabase();
     state.settings.supabase.lastSyncAt = new Date().toISOString();
     state.syncQueue = [];
@@ -1608,6 +1624,15 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
   } catch (error) {
     if (state.syncQueue.length) {
       try {
+        const partiallySyncedCurrent = state.requisitions.find(
+          (requisition) => requisition.id === state.current.id
+        );
+        if (partiallySyncedCurrent) {
+          state.current.lastSyncedRevision = partiallySyncedCurrent.lastSyncedRevision;
+          state.current.lastSyncedAt = partiallySyncedCurrent.lastSyncedAt;
+        }
+        await saveRequisitions(state.requisitions);
+        await persistCurrent();
         state.syncQueue = await markSyncQueueFailed(state.syncQueue, error);
         scheduleAutoSync();
       } catch (storageError) {
@@ -2037,7 +2062,7 @@ function renderHistory() {
     return matchesText && matchesStatus && matchesDate;
   }).sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt));
   els.historyList.innerHTML = "";
-  rows.forEach((req) => {
+  rows.slice(0, historyVisibleLimit).forEach((req) => {
     const created = formatDateParts(req.createdAt, state.settings.hourFormat);
     const updated = formatDateParts(req.updatedAt, state.settings.hourFormat);
     const productNames = req.items
@@ -2076,6 +2101,13 @@ function renderHistory() {
     els.historyList.append(card);
   });
   els.historyEmpty.classList.toggle("visible", rows.length === 0);
+  els.historyLoadMore.hidden = rows.length <= historyVisibleLimit;
+  els.historyLoadMore.textContent = `Cargar más (${Math.max(0, rows.length - historyVisibleLimit)})`;
+}
+
+function resetAndRenderHistory() {
+  historyVisibleLimit = 30;
+  renderHistory();
 }
 
 function renderFrequentProducts() {

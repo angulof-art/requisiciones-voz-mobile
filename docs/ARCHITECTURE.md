@@ -57,6 +57,12 @@ La cola vive en IndexedDB, consolida actualizaciones redundantes de una misma
 entidad y registra intentos, ultimo error y proximo reintento con backoff. El
 detalle de migracion y rollback esta en `docs/LOCAL_STORAGE_MIGRATION.md`.
 
+La sincronizacion optimista conserva `revisionNumber`, `lastSyncedRevision` y
+`lastSyncedAt`. Una escritura remota solo actualiza la revision que el cliente
+leyo; cero filas modificadas se interpreta como conflicto y deja el cambio
+local pendiente para revision. La sincronizacion general procesa unicamente
+los IDs presentes en la cola activa.
+
 La sincronizacion se puede desactivar por dispositivo. La interfaz expone
 operaciones independientes para probar la conexion, subir el estado local y
 descargar el estado remoto; la descarga reutiliza la misma combinacion segura
@@ -71,6 +77,16 @@ construyen como archivos binarios en el navegador. Excel conserva una hoja
 simple de tres columnas y agrega una segunda hoja operativa. Web Share usa la
 hoja nativa del dispositivo y copia al portapapeles como fallback.
 
+El historial renderiza lotes de 30 pedidos y permite cargar mas sin montar los
+5.000 registros a la vez. `src/reports.js` calcula KPIs y agrupaciones sin
+conceder acceso adicional: la capacidad `reports.read` y RLS siguen siendo la
+autoridad.
+
+La politica CSP permite unicamente recursos propios, blobs/datos de exportacion
+y conexiones HTTPS/WSS a Supabase. `tools/security-scan.mjs` rechaza patrones de
+secretos privados y `tools/production-readiness.mjs` verifica volumen,
+exportaciones, CSP, service worker y paginacion.
+
 ## Actualizacion PWA
 
 La version se toma de `package.json` y `pnpm run version:sync` actualiza los
@@ -81,6 +97,7 @@ recarga una sola vez para evitar mezclar modulos de versiones diferentes.
 ## Supuestos
 
 - La primera version exporta Excel `.xlsx` real para Excel y conserva CSV para Google Sheets.
-- El PDF se genera como vista imprimible del navegador.
+- El PDF se genera como archivo binario descargable dentro del navegador.
 - La integracion directa con Google Sheets queda para una version con OAuth.
-- Las ordenes avanzadas de voz se detectan, pero no modifican datos sin revision.
+- Las ordenes avanzadas modifican el pedido mediante el motor conversacional y
+  conservan deshacer; las referencias ambiguas exigen revision.

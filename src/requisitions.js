@@ -1,10 +1,10 @@
-import { productAllowsUnit } from "./catalog.js?v=2.0.0-beta.2";
+import { productAllowsUnit } from "./catalog.js?v=2.0.0-beta.3";
 import {
   WORKFLOW_STATUS,
   normalizeFulfillmentFields,
   normalizeWorkflowFields,
   transitionRequisition
-} from "./workflow.js?v=2.0.0-beta.2";
+} from "./workflow.js?v=2.0.0-beta.3";
 
 export const STATUS = WORKFLOW_STATUS;
 
@@ -74,6 +74,8 @@ export function normalizeRequisition(requisition) {
       requisition.destinationDepartmentId || requisition.destination_department_id || "",
     localOwnerUserId: requisition.localOwnerUserId || "",
     revisionNumber: Math.max(1, Number(requisition.revisionNumber || requisition.revision_number) || 1),
+    lastSyncedRevision: Math.max(0, Number(requisition.lastSyncedRevision || requisition.last_synced_revision) || 0),
+    lastSyncedAt: requisition.lastSyncedAt || requisition.last_synced_at || "",
     ...normalizeWorkflowFields(requisition),
     status: requisition.status || "draft",
     originalTranscript: requisition.originalTranscript || requisition.original_transcript || "",

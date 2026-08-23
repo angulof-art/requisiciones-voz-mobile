@@ -48,6 +48,8 @@ const { data: created, error: createError } = await actors.requesterA.client
     requested_by_user_id: actors.requesterA.user.id,
     requisition_number: testNumber,
     requested_by: "Solicitante QA A",
+    requested_by_name: "Solicitante QA A",
+    required_at: new Date(Date.now() + 86_400_000).toISOString(),
     status: "draft",
     original_transcript: "1 kg de producto QA RLS",
     device_info: "phase3-rls-matrix"
@@ -62,6 +64,7 @@ const { error: itemError } = await actors.requesterA.client.from("requisition_it
   requisition_id: testId,
   product_name: "Producto QA RLS",
   quantity: 1,
+  requested_quantity: 1,
   unit: "kg",
   notes: "",
   original_text: "1 kg de producto QA RLS",
@@ -78,13 +81,19 @@ await assertVisible(actors.managerA.client, testId, true, "manager A");
 await assertVisible(actors.adminA.client, testId, true, "admin A");
 await assertVisible(actors.requesterB.client, testId, false, "organization B isolation");
 
+const { error: submitError } = await actors.requesterA.client
+  .from("requisitions")
+  .update({ status: "submitted", revision_number: 2 })
+  .eq("id", testId);
+assert.ifError(submitError);
+
 const { data: receiverUpdate, error: receiverUpdateError } = await actors.receiverA.client
   .from("requisitions")
-  .update({ status: "confirmed" })
+  .update({ status: "received", revision_number: 3 })
   .eq("id", testId)
   .select("id");
 assert.equal(receiverUpdateError, null);
-assert.equal(receiverUpdate.length, 0, "receiver must not update in Phase 3");
+assert.equal(receiverUpdate.length, 1, "receiver destination must update workflow");
 
 const foreign = contexts.requesterB;
 const { error: maliciousError } = await actors.requesterB.client.from("requisitions").insert({
@@ -96,6 +105,7 @@ const { error: maliciousError } = await actors.requesterB.client.from("requisiti
   requested_by_user_id: actors.requesterB.user.id,
   requisition_number: `MAL-${Date.now()}`,
   requested_by: "Ataque QA",
+  requested_by_name: "Ataque QA",
   status: "draft",
   original_transcript: "foreign ids"
 });
@@ -110,7 +120,7 @@ const { data: productsB, error: productsBError } = await actors.requesterB.clien
 assert.ifError(productsBError);
 assert.equal(productsB.length, 0);
 
-const { error: voidError } = await actors.requesterA.client
+const { error: voidError } = await actors.adminA.client
   .from("requisitions")
   .update({ status: "voided" })
   .eq("id", testId);
