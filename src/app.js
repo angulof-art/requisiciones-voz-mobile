@@ -142,6 +142,8 @@ const els = {
   autosaveState: document.querySelector("#autosaveState"),
   retryLocalSaveButton: document.querySelector("#retryLocalSaveButton"),
   itemCount: document.querySelector("#itemCount"),
+  reviewSummary: document.querySelector("#reviewSummary"),
+  frequentList: document.querySelector("#frequentList"),
   requisitionNumber: document.querySelector("#requisitionNumber"),
   statusBadge: document.querySelector("#statusBadge"),
   addRowButton: document.querySelector("#addRowButton"),
@@ -163,6 +165,9 @@ const els = {
   historyDate: document.querySelector("#historyDate"),
   historyList: document.querySelector("#historyList"),
   historyEmpty: document.querySelector("#historyEmpty"),
+  favoritesList: document.querySelector("#favoritesList"),
+  favoritesEmpty: document.querySelector("#favoritesEmpty"),
+  saveTemplateButton: document.querySelector("#saveTemplateButton"),
   inboxStatus: document.querySelector("#inboxStatus"),
   inboxCount: document.querySelector("#inboxCount"),
   inboxList: document.querySelector("#inboxList"),
@@ -338,7 +343,10 @@ function bindEvents() {
     scheduleAutoSave();
   });
 
-  els.voiceButton.addEventListener("click", toggleSpeech);
+  els.voiceButton.addEventListener("pointerdown", startPressToTalk);
+  els.voiceButton.addEventListener("pointerup", stopPressToTalk);
+  els.voiceButton.addEventListener("pointercancel", stopPressToTalk);
+  els.voiceButton.addEventListener("keydown", handleVoiceKeyboard);
   els.processTranscriptButton.addEventListener("click", processTranscript);
   els.retryLocalSaveButton.addEventListener("click", autoSaveOrder);
   els.addRowButton.addEventListener("click", addManualRow);
@@ -364,6 +372,9 @@ function bindEvents() {
     input.addEventListener("change", renderHistory);
   });
   els.historyList.addEventListener("click", handleHistoryAction);
+  els.frequentList.addEventListener("click", addQuickProduct);
+  els.favoritesList.addEventListener("click", applyFavoriteTemplate);
+  els.saveTemplateButton.addEventListener("click", saveCurrentAsTemplate);
   els.inboxStatus.addEventListener("change", renderInbox);
   els.inboxList.addEventListener("click", handleInboxAction);
 
@@ -408,6 +419,7 @@ function navigate(target) {
   const titles = {
     new: "Nuevo pedido",
     history: "Historial",
+    favorites: "Favoritos",
     inbox: "Pedidos recibidos",
     catalog: "Catálogo",
     config: "Configuración",
@@ -417,6 +429,7 @@ function navigate(target) {
   };
   els.screenTitle.textContent = titles[target] || "Pedidos por Voz";
   if (target === "history") renderHistory();
+  if (target === "favorites") renderFavorites();
   if (target === "inbox") renderInbox();
   if (target === "catalog") renderCatalog();
   if (target === "sync") renderSync();
@@ -663,6 +676,109 @@ function processTranscript(textOverride = null) {
   renderItems();
   showDuplicateSuggestion(true);
   toast(voiceResult.message);
+}
+
+function startPressToTalk(event) {
+  if (event.button !== 0 || els.voiceButton.disabled || dictationSessionActive) return;
+  event.preventDefault();
+  els.voiceButton.setPointerCapture?.(event.pointerId);
+  toggleSpeech();
+  navigator.vibrate?.(25);
+}
+
+function stopPressToTalk(event) {
+  if (!dictationSessionActive) return;
+  event.preventDefault();
+  stopDictationSession();
+  navigator.vibrate?.([18, 35, 18]);
+}
+
+function handleVoiceKeyboard(event) {
+  if (!["Enter", " "].includes(event.key) || event.repeat) return;
+  event.preventDefault();
+  toggleSpeech();
+}
+
+function addQuickProduct(event) {
+  const button = event.target.closest("button[data-product-id]");
+  if (!button) return;
+  const product = state.catalog.find((entry) => entry.id === button.dataset.productId);
+  if (!product) return;
+  pushUndo();
+  const item = normalizeItem({
+    id: createId("item"),
+    productId: product.id,
+    productCode: product.code,
+    productName: product.officialName,
+    rawProductName: product.officialName,
+    quantity: 1,
+    requestedQuantity: 1,
+    unit: product.defaultUnit,
+    unitExplicit: false,
+    unitInferred: true,
+    confidence: 96,
+    confidenceBand: "high",
+    needsReview: false
+  });
+  state.current.items.push(item);
+  addChange(state.current, "agregar_frecuente", null, item);
+  autoSaveOrder();
+  render();
+  toast(`${product.officialName} agregado.`);
+}
+
+async function saveCurrentAsTemplate() {
+  const items = state.current.items.filter((item) => item.productName && Number(item.quantity) > 0);
+  if (!items.length) return toast("Agregue productos antes de guardar la plantilla.");
+  const name = window.prompt("Nombre de la plantilla", "Pedido semanal")?.trim();
+  if (!name) return;
+  state.settings.favoriteTemplates = state.settings.favoriteTemplates || [];
+  state.settings.favoriteTemplates.unshift({
+    id: createId("template"),
+    name,
+    items: items.map((item) => ({
+      productId: item.productId,
+      productCode: item.productCode,
+      productName: item.productName,
+      quantity: item.quantity,
+      unit: item.unit,
+      notes: item.notes
+    }))
+  });
+  state.settings.favoriteTemplates = state.settings.favoriteTemplates.slice(0, 30);
+  await saveSettings(state.settings);
+  renderFavorites();
+  toast("Plantilla guardada.");
+}
+
+async function applyFavoriteTemplate(event) {
+  const button = event.target.closest("button[data-template-id]");
+  if (!button) return;
+  if (button.dataset.action === "delete-template") {
+    state.settings.favoriteTemplates = (state.settings.favoriteTemplates || [])
+      .filter((entry) => entry.id !== button.dataset.templateId);
+    await saveSettings(state.settings);
+    renderFavorites();
+    toast("Plantilla eliminada.");
+    return;
+  }
+  const template = getFavoriteTemplates().find((entry) => entry.id === button.dataset.templateId);
+  if (!template?.items.length) return;
+  pushUndo();
+  const added = template.items.map((item) => normalizeItem({
+    ...clone(item),
+    id: createId("item"),
+    requestedQuantity: item.quantity,
+    confidence: 96,
+    confidenceBand: "high",
+    needsReview: false
+  }));
+  state.current.items.push(...added);
+  addChange(state.current, "aplicar_plantilla", null, { id: template.id, name: template.name, items: added });
+  autoSaveOrder();
+  render();
+  navigate("new");
+  toast(`${template.name}: ${added.length} producto(s) agregados.`);
 }
 
 function addManualRow() {
@@ -1548,7 +1664,7 @@ function setupSpeechRecognition() {
     els.voiceButton.classList.add("listening");
     els.voiceButton.setAttribute("aria-pressed", "true");
     els.voicePrimary.textContent = "Escuchando";
-    els.voiceSecondary.textContent = "Toque para detener";
+    els.voiceSecondary.textContent = "Suelte para terminar";
     els.speechStatus.textContent = "Escuchando... puede dictar varios productos.";
   };
   recognition.onerror = (event) => {
@@ -1737,8 +1853,8 @@ function stopSpeechUi() {
   isListening = false;
   els.voiceButton.classList.remove("listening");
   els.voiceButton.setAttribute("aria-pressed", "false");
-  els.voicePrimary.textContent = "Dictar";
-  els.voiceSecondary.textContent = "Toque para hablar";
+  els.voicePrimary.textContent = "Mantenga y hable";
+  els.voiceSecondary.textContent = "Puede pedir varios productos";
 }
 
 function describeSpeechError(error) {
@@ -1766,8 +1882,10 @@ function render() {
   renderResponsibleState();
   renderRouting();
   renderSummary();
+  renderFrequentProducts();
   renderItems();
   renderHistory();
+  renderFavorites();
   renderInbox();
   renderCatalog();
   renderConnection();
@@ -1798,7 +1916,8 @@ function renderItems() {
   els.itemsList.innerHTML = "";
   els.itemCount.textContent = String(state.current.items.length);
   const units = unitOptions();
-  state.current.items.forEach((item, index) => {
+  const orderedItems = [...state.current.items].sort((left, right) => Number(right.needsReview) - Number(left.needsReview));
+  orderedItems.forEach((item, index) => {
     const editable = ["draft", "review"].includes(state.current.status);
     const disabled = editable ? "" : "disabled";
     const card = document.createElement("article");
@@ -1843,6 +1962,8 @@ function renderItems() {
     els.itemsList.append(card);
   });
   els.itemsEmpty.classList.toggle("visible", state.current.items.length === 0);
+  const reviewCount = state.current.items.filter((item) => item.needsReview).length;
+  els.reviewSummary.textContent = `${state.current.items.length - reviewCount} listos · ${reviewCount} por revisar`;
 }
 
 function renderValidation(validation) {
@@ -1908,6 +2029,63 @@ function renderHistory() {
     els.historyList.append(card);
   });
   els.historyEmpty.classList.toggle("visible", rows.length === 0);
+}
+
+function renderFrequentProducts() {
+  const counts = new Map();
+  state.requisitions.forEach((requisition) => {
+    requisition.items.forEach((item) => {
+      const product = state.catalog.find((entry) => entry.id === item.productId || (item.productCode && entry.code === item.productCode));
+      if (!product) return;
+      const entry = counts.get(product.id) || { product, count: 0 };
+      entry.count += 1;
+      counts.set(product.id, entry);
+    });
+  });
+  const frequent = [...counts.values()].sort((left, right) => right.count - left.count).slice(0, 6);
+  const choices = frequent.length
+    ? frequent
+    : state.catalog.filter((product) => product.active !== false).slice(0, 6).map((product) => ({ product, count: 0 }));
+  els.frequentList.innerHTML = choices.map(({ product, count }) =>
+    `<button class="quick-product" type="button" data-product-id="${escapeHtml(product.id)}"><strong>+ ${escapeHtml(product.officialName)}</strong><span>${escapeHtml(product.defaultUnit)}${count ? ` · ${count} pedidos` : ""}</span></button>`
+  ).join("");
+}
+
+function renderFavorites() {
+  const templates = getFavoriteTemplates().filter((template) => template.items.length);
+  els.favoritesList.innerHTML = templates.map((template) => {
+    const isCustom = (state.settings.favoriteTemplates || []).some((entry) => entry.id === template.id);
+    return `<article class="history-card"><div class="history-header"><div><div class="history-title">${escapeHtml(template.name)}</div><p class="history-products">${escapeHtml(template.items.slice(0, 4).map((item) => item.productName).join(", "))}${template.items.length > 4 ? "…" : ""}</p></div><span class="state-badge">${template.items.length}</span></div><div class="card-actions"><button type="button" data-template-id="${escapeHtml(template.id)}">Agregar al pedido</button>${isCustom ? `<button class="danger" type="button" data-action="delete-template" data-template-id="${escapeHtml(template.id)}">Eliminar</button>` : ""}</div></article>`;
+  }).join("");
+  els.favoritesEmpty.classList.toggle("visible", templates.length === 0);
+}
+
+function getFavoriteTemplates() {
+  const definitions = [
+    ["Desayuno", ["leche", "huevo", "pan", "cafe"]],
+    ["Frutas", ["banano", "papaya", "sandia", "melon"]],
+    ["Banquetes", ["pechuga", "arroz", "tomate", "lechuga"]],
+    ["Sushi", ["salmon", "arroz", "wasabi", "aguacate"]],
+    ["Pedido semanal", ["azucar", "leche", "arroz", "cebolla"]]
+  ];
+  const starterTemplates = definitions.map(([name, keywords], index) => {
+    const used = new Set();
+    const items = keywords.flatMap((keyword) => {
+      const product = state.catalog.find((entry) => entry.active !== false && !used.has(entry.id) && normalizeText(entry.officialName).includes(keyword));
+      if (!product) return [];
+      used.add(product.id);
+      return [{
+        productId: product.id,
+        productCode: product.code,
+        productName: product.officialName,
+        quantity: 1,
+        unit: product.defaultUnit,
+        notes: ""
+      }];
+    });
+    return { id: `starter-${index}`, name, items };
+  });
+  return [...(state.settings.favoriteTemplates || []), ...starterTemplates];
 }
 
 function renderInbox() {

@@ -61,6 +61,10 @@ operaciones independientes para probar la conexion, subir el estado local y
 descargar el estado remoto; la descarga reutiliza la misma combinacion segura
 del historial y nunca vacia la base local antes de incorporar la nube.
 
+La experiencia movil deriva frecuentes del historial local y guarda plantillas
+en settings del contexto aislado. La voz funciona por presion sostenida hasta
+45 segundos, muestra transcripcion parcial y respeta `prefers-reduced-motion`.
+
 ## Actualizacion PWA
 
 La version se toma de `package.json` y `pnpm run version:sync` actualiza los

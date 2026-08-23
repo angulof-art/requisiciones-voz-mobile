@@ -235,6 +235,9 @@ alias aprendidos y dataset de al menos 150 frases.
 
 ### Fase 6 - UX movil
 
+Estado: implementada con voz por presion, revision priorizada, frecuentes,
+plantillas y navegacion por permisos.
+
 Pantalla centrada en voz, revision solo de dudas, frecuentes, favoritos y panel
 administrativo separado.
 

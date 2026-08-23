@@ -100,7 +100,7 @@
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">Entrada rápida</p>
-                <h2 id="dictationTitle">Dicte los productos</h2>
+                <h2 id="dictationTitle">¿Qué necesita pedir?</h2>
               </div>
               <div class="autosave-actions">
                 <span class="autosave-state" id="autosaveState" role="status">Comprobando…</span>
@@ -119,8 +119,8 @@
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <path d="M12 19v3" />
                 </svg>
-                <span id="voicePrimary">Dictar</span>
-                <small id="voiceSecondary">Toque para hablar</small>
+                <span id="voicePrimary">Mantenga y hable</span>
+                <small id="voiceSecondary">Puede pedir varios productos</small>
               </button>
             </div>
             <div class="dictation-footer">
@@ -130,10 +130,18 @@
             <p class="last-transcript" id="lastTranscript" hidden></p>
           </section>
 
+          <section class="quick-panel" aria-labelledby="frequentTitle">
+            <div class="panel-heading compact-heading">
+              <div><p class="eyebrow">Agregar rápido</p><h2 id="frequentTitle">Frecuentes</h2></div>
+            </div>
+            <div class="quick-list" id="frequentList"></div>
+          </section>
+
           <div class="items-heading">
             <div>
               <p class="eyebrow">Pedido</p>
-              <h2>Productos <span id="itemCount">0</span></h2>
+              <h2>Pedido identificado <span id="itemCount">0</span></h2>
+              <p class="hint" id="reviewSummary">0 listos · 0 por revisar</p>
             </div>
             <div class="toolbar compact-toolbar">
               <button class="secondary icon-button" id="undoButton" type="button" title="Deshacer" aria-label="Deshacer">↶</button>
@@ -161,6 +169,15 @@
               <button class="secondary" id="exportCsvButton" type="button">Excel</button>
             </div>
           </div>
+        </section>
+
+        <section class="screen" id="screen-favorites" data-screen="favorites" aria-labelledby="favoritesTitle">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Plantillas</p><h2 id="favoritesTitle">Favoritos</h2></div>
+            <button id="saveTemplateButton" type="button">Guardar pedido actual</button>
+          </div>
+          <div class="history-list" id="favoritesList"></div>
+          <div class="empty-state" id="favoritesEmpty">Todavía no hay plantillas con productos disponibles.</div>
         </section>
 
         <section class="screen" id="screen-history" data-screen="history" aria-labelledby="historyTitle">
@@ -366,8 +383,9 @@
       </main>
 
       <nav class="bottom-nav" aria-label="Navegación principal">
-        <button class="active" data-target="new" type="button">Pedido</button>
-        <button data-target="history" type="button">Historial</button>
+        <button class="active" data-target="new" data-permission="requisitions.create" type="button">Pedido</button>
+        <button data-target="history" data-permission="requisitions.read" type="button">Mis pedidos</button>
+        <button data-target="favorites" data-permission="requisitions.create" type="button">Favoritos</button>
         <button data-target="inbox" data-permission="requisitions.receive" type="button">Pendientes</button>
         <button data-target="catalog" type="button">Catálogo</button>
         <button data-target="profile" type="button">Perfil</button>

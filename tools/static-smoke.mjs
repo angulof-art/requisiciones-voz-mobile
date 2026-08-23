@@ -52,7 +52,9 @@ const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
 const sql = readFileSync(join(root, "supabase/migrations/202608030001_requisitions.sql"), "utf8");
 const allText = collectText(root);
 
-assert.ok(index.includes("Dicte los productos"));
+assert.ok(index.includes("¿Qué necesita pedir?"));
+assert.ok(index.includes('id="frequentList"'));
+assert.ok(index.includes('id="favoritesList"'));
 assert.ok(index.includes("Agregar texto"));
 assert.equal(index.includes("Revisar pedido"), false);
 assert.ok(index.includes("Responsable del pedido"));
