@@ -71,6 +71,7 @@ import {
 } from "./auth/session.js?v=2.0.0-beta.5";
 import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-beta.5";
 import { buildOperationalReport } from "./reports.js?v=2.0.0-beta.5";
+import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-beta.5";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
@@ -106,6 +107,7 @@ let waitingServiceWorker = null;
 let serviceWorkerReloading = false;
 let localSaveChain = Promise.resolve();
 let historyVisibleLimit = 30;
+let emailController = null;
 
 const els = {
   authGate: document.querySelector("#authGate"),
@@ -301,6 +303,17 @@ async function activateSession(session) {
     state = await loadAppState();
     state.current.requestedBy = state.current.requestedBy || context.displayName;
     state.current.requestedByUserId = state.current.requestedByUserId || context.userId;
+    if (!emailController) {
+      emailController = createEmailDistributionController({
+        getContext: () => userContext,
+        getCurrentRequisition: () => state?.current,
+        getRequisition: (id) => [state?.current, ...(state?.requisitions || [])].find((entry) => entry?.id === id),
+        getCatalog: () => state?.catalog || [],
+        getDepartments: () => userContext?.directoryDepartments || userContext?.departments || [],
+        formatDate: (value) => formatDateParts(value, state?.settings?.hourFormat || "24"),
+        toast
+      });
+    }
     if (!eventsBound) {
       bindEvents();
       eventsBound = true;
@@ -451,7 +464,8 @@ function navigate(target) {
     config: "Configuración",
     sync: "Estado",
     profile: "Mi perfil",
-    admin: "Administración"
+    admin: "Administración",
+    "email-admin": "Distribución por correo"
   };
   els.screenTitle.textContent = titles[target] || "Pedidos por Voz";
   if (target === "history") renderHistory();
@@ -462,6 +476,7 @@ function navigate(target) {
   if (target === "sync") renderSync();
   if (target === "profile") renderUserContext();
   if (target === "admin") renderAdmin();
+  if (target === "email-admin") emailController?.renderAdmin();
 }
 
 function applyAccessControls() {
@@ -1970,6 +1985,7 @@ function render() {
   renderCatalog();
   renderConnection();
   renderRecentNames();
+  emailController?.renderCurrent(state.current);
 }
 
 function renderSummary() {
@@ -2083,6 +2099,7 @@ function renderHistory() {
     const canAccept = req.status === "delivered" && req.requestedByUserId === userContext.userId;
     const canClose = req.status === "accepted" && (hasRole(userContext, "manager") || hasRole(userContext, "administrator"));
     const canVoid = ["draft", "review", "submitted", "received", "preparing", "partial"].includes(req.status);
+    const canEmail = emailController?.canOffer(req);
     const card = document.createElement("article");
     card.className = "history-card";
     card.innerHTML = `
@@ -2103,6 +2120,7 @@ function renderHistory() {
         ${canAccept ? `<button type="button" data-action="accept" data-id="${escapeHtml(req.id)}">Recibido conforme</button>` : ""}
         ${canClose ? `<button type="button" data-action="close" data-id="${escapeHtml(req.id)}">Cerrar</button>` : ""}
         <button class="secondary" type="button" data-action="duplicate" data-id="${escapeHtml(req.id)}">Duplicar</button>
+        ${canEmail ? `<button class="secondary" type="button" data-email-requisition-id="${escapeHtml(req.id)}">Enviar por correo</button>` : ""}
         ${canVoid ? `<button class="danger" type="button" data-action="void" data-id="${escapeHtml(req.id)}">Anular</button>` : ""}
       </div>
     `;

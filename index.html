@@ -167,6 +167,7 @@
           <div class="order-actions">
             <button id="confirmButton" type="button">Enviar pedido</button>
             <div class="export-actions">
+              <button class="secondary email-action" id="emailButton" type="button" hidden>Enviar por correo</button>
               <button class="secondary" id="exportPdfButton" type="button">PDF</button>
               <button class="secondary" id="exportCsvButton" type="button">Excel</button>
               <button class="secondary" id="shareButton" type="button">Compartir</button>
@@ -403,7 +404,81 @@
             <p class="hint">Las cuentas nuevas se crean mediante el procedimiento seguro de administración; aquí se revisan las membresías existentes.</p>
           </div>
         </section>
+
+        <section class="screen" id="screen-email-admin" data-screen="email-admin" aria-labelledby="emailAdminTitle">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Administración</p><h2 id="emailAdminTitle">Distribución por correo</h2></div>
+          </div>
+          <div id="emailAdminRoot" aria-live="polite"></div>
+        </section>
       </main>
+
+      <dialog class="email-dialog" id="emailDistributionDialog" aria-labelledby="emailDialogTitle">
+        <div class="email-dialog-shell">
+          <header class="email-dialog-header">
+            <div>
+              <p class="eyebrow">Distribución del pedido</p>
+              <h2 id="emailDialogTitle">Enviar requisición</h2>
+            </div>
+            <button class="secondary icon-button" id="emailCloseButton" type="button" aria-label="Cerrar" title="Cerrar">×</button>
+          </header>
+
+          <div class="email-order-summary" id="emailOrderSummary"></div>
+          <div class="email-notice" id="emailFeatureNotice" role="status" hidden></div>
+
+          <section id="emailComposeStep">
+            <label>Tipo de distribución
+              <select id="emailDistributionGroup"></select>
+            </label>
+
+            <fieldset class="email-mixed-options" id="emailMixedOptions" hidden>
+              <legend>Este pedido contiene categorías con distribuciones diferentes</legend>
+              <label><input type="radio" name="emailMixedMode" value="full" checked /> Enviar pedido completo</label>
+              <label><input type="radio" name="emailMixedMode" value="split" /> Separar por distribución</label>
+            </fieldset>
+
+            <div class="email-recipient-section">
+              <div class="panel-heading compact-heading">
+                <div><p class="eyebrow">Revisión</p><h3>Destinatarios</h3></div>
+                <span class="state-badge" id="emailRecipientCount">0</span>
+              </div>
+              <div class="email-recipient-list" id="emailRecipientList"></div>
+              <p class="hint" id="emailRecipientHint"></p>
+            </div>
+
+            <div id="emailExternalBlock" hidden>
+              <label>Otro correo autorizado
+                <div class="inline-field">
+                  <input id="emailExternalAddress" type="email" autocomplete="off" maxlength="254" placeholder="persona@dominio.com" />
+                  <button class="secondary" id="emailAddExternalButton" type="button">Añadir</button>
+                </div>
+              </label>
+              <div class="email-external-list" id="emailExternalList"></div>
+            </div>
+
+            <label id="emailEventLabel" hidden>Evento especial
+              <input id="emailEventName" maxlength="160" placeholder="Evento corporativo 120 pax" />
+            </label>
+            <label>Observación para el correo
+              <textarea id="emailCustomNote" rows="3" maxlength="2000"></textarea>
+            </label>
+          </section>
+
+          <section id="emailPreviewStep" hidden>
+            <div class="email-preview-list" id="emailPreviewList"></div>
+          </section>
+
+          <div class="validation-list" id="emailValidationList" role="alert"></div>
+          <div class="email-send-history" id="emailSendHistory"></div>
+
+          <footer class="email-dialog-actions">
+            <button class="secondary" id="emailBackButton" type="button" hidden>Volver</button>
+            <button class="secondary" id="emailCancelButton" type="button">Cancelar</button>
+            <button id="emailPreviewButton" type="button">Vista previa</button>
+            <button id="emailSendButton" type="button" hidden>Enviar correo</button>
+          </footer>
+        </div>
+      </dialog>
 
       <nav class="bottom-nav" aria-label="Navegación principal">
         <button class="active" data-target="new" data-permission="requisitions.create" type="button">Pedido</button>
@@ -415,6 +490,7 @@
         <button data-target="profile" type="button">Perfil</button>
         <button data-target="config" data-permission="config.technical" type="button">Config</button>
         <button data-target="admin" data-role="administrator" type="button">Admin</button>
+        <button data-target="email-admin" data-permission="email.groups.manage" type="button">Correo</button>
       </nav>
 
       <div class="toast" id="toast" role="status" aria-live="polite"></div>

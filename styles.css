@@ -1034,6 +1034,10 @@ h2 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .export-actions .email-action {
+    grid-column: 1 / -1;
+  }
+
   .export-actions button {
     min-width: 0;
   }
@@ -1116,6 +1120,249 @@ h2 {
 
 .toast.visible {
   display: block;
+}
+
+.email-dialog {
+  width: min(calc(100% - 1rem), 720px);
+  max-height: calc(100dvh - 1rem);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.email-dialog::backdrop {
+  background: rgba(12, 22, 20, 0.58);
+}
+
+.email-dialog-shell {
+  display: grid;
+  gap: 1rem;
+  max-height: calc(100dvh - 1rem);
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.email-dialog-header,
+.email-dialog-actions,
+.email-order-summary,
+.email-recipient-row,
+.email-admin-row,
+.inline-field {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.email-dialog-header,
+.email-order-summary,
+.email-admin-row {
+  justify-content: space-between;
+}
+
+.email-dialog-header h2,
+.email-recipient-section h3 {
+  margin: 0.15rem 0 0;
+}
+
+.email-order-summary {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.email-order-summary div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 120px;
+}
+
+.email-order-summary span,
+.email-preview-meta span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.email-notice {
+  padding: 0.75rem;
+  border-left: 4px solid var(--accent);
+  background: #fff7e8;
+  color: #6d4700;
+}
+
+.email-mixed-options {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.9rem 0;
+  padding: 0.75rem;
+  border: 1px solid #e7bf70;
+  border-radius: 7px;
+  background: #fff9ed;
+}
+
+.email-mixed-options label,
+.email-recipient-row label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.email-mixed-options input,
+.email-recipient-row input,
+.email-admin-row input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+}
+
+.email-recipient-section,
+.email-send-history {
+  margin-top: 1rem;
+}
+
+.email-recipient-list,
+.email-external-list,
+.email-preview-list,
+.email-admin-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.email-recipient-row,
+.email-admin-row {
+  min-height: 52px;
+  padding: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.email-recipient-row label {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.email-recipient-row strong,
+.email-recipient-row small,
+.email-admin-row strong,
+.email-admin-row small {
+  display: block;
+}
+
+.email-recipient-row small,
+.email-admin-row small {
+  color: var(--muted);
+}
+
+.email-recipient-row select {
+  width: auto;
+  min-width: 72px;
+}
+
+.email-lock {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.inline-field {
+  align-items: stretch;
+}
+
+.inline-field input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.email-dialog-actions {
+  position: sticky;
+  bottom: -1rem;
+  z-index: 2;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin: 0 -1rem -1rem;
+  padding: 0.8rem 1rem calc(0.8rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.email-preview {
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.email-preview h3 {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+}
+
+.email-preview-meta {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.email-preview-products {
+  width: 100%;
+  margin-top: 0.8rem;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.email-preview-products th,
+.email-preview-products td {
+  padding: 0.45rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.email-preview-products th:nth-child(2),
+.email-preview-products td:nth-child(2) {
+  text-align: right;
+}
+
+.email-admin-toolbar {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0;
+}
+
+.email-admin-group-editor {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 420px) {
+  .email-dialog {
+    width: 100%;
+    max-height: 100dvh;
+    border-width: 0;
+    border-radius: 0;
+  }
+
+  .email-dialog-shell {
+    max-height: 100dvh;
+  }
+
+  .email-recipient-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .email-recipient-row select {
+    margin-left: 30px;
+  }
+
+  .email-dialog-actions button {
+    flex: 1 1 44%;
+  }
 }
 
 .visually-hidden {
