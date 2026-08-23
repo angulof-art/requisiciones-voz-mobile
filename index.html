@@ -231,6 +231,25 @@
           <div class="empty-state" id="inboxEmpty">No hay pedidos para este departamento.</div>
         </section>
 
+        <section class="screen" id="screen-reports" data-screen="reports" aria-labelledby="reportsTitle">
+          <div class="panel-heading"><div><p class="eyebrow">Operación</p><h2 id="reportsTitle">Dashboard</h2></div></div>
+          <div class="report-filters">
+            <label>Desde<input id="reportDateFrom" type="date" /></label>
+            <label>Hasta<input id="reportDateTo" type="date" /></label>
+            <label>Sede<select id="reportLocation"><option value="all">Todas</option></select></label>
+            <label>Departamento<select id="reportDepartment"><option value="all">Todos</option></select></label>
+            <label>Estado<select id="reportStatus"><option value="all">Todos</option><option value="submitted">Pendiente</option><option value="preparing">Preparando</option><option value="partial">Parcial</option><option value="delivered">Entregado</option><option value="closed">Cerrado</option></select></label>
+          </div>
+          <div class="kpi-grid" id="reportKpis"></div>
+          <div class="report-grid">
+            <section><h3>Más solicitados</h3><div class="report-table-wrap" id="reportTopRequested"></div></section>
+            <section><h3>Faltantes frecuentes</h3><div class="report-table-wrap" id="reportUnavailable"></div></section>
+            <section><h3>Sustituciones</h3><div class="report-table-wrap" id="reportSubstitutions"></div></section>
+            <section><h3>Departamentos</h3><div class="report-table-wrap" id="reportDepartments"></div></section>
+          </div>
+          <div class="empty-state" id="reportsEmpty">No hay datos para los filtros seleccionados.</div>
+        </section>
+
         <section class="screen" id="screen-catalog" data-screen="catalog" aria-labelledby="catalogTitle">
           <div class="panel-heading">
             <h2 id="catalogTitle">Catálogo de productos</h2>
@@ -387,6 +406,7 @@
         <button data-target="history" data-permission="requisitions.read" type="button">Mis pedidos</button>
         <button data-target="favorites" data-permission="requisitions.create" type="button">Favoritos</button>
         <button data-target="inbox" data-permission="requisitions.receive" type="button">Pendientes</button>
+        <button data-target="reports" data-permission="reports.read" type="button">Reportes</button>
         <button data-target="catalog" type="button">Catálogo</button>
         <button data-target="profile" type="button">Perfil</button>
         <button data-target="config" data-permission="config.technical" type="button">Config</button>

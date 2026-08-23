@@ -14,6 +14,7 @@ externos, pruebas con Node y migraciones SQL separadas.
 - `src/requisitions.js`: pedidos, validaciones, numeracion, cambios y combinacion
   segura del historial local/remoto.
 - `src/workflow.js`: maquina de estados, prioridades y cumplimiento por linea.
+- `src/reports.js`: agregaciones puras para KPIs y reportes autorizados.
 - `src/storage.js`: fachada asincrona, fallback y cola de sincronizacion.
 - `src/db/indexeddb.js`: base local transaccional, stores, indices y paginacion.
 - `src/db/migrate-v10.js`: copia V10 idempotente y verificacion de integridad.

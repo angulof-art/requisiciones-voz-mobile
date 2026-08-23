@@ -19,6 +19,7 @@ const required = [
   "src/catalog.js",
   "src/catalog-data.js",
   "src/requisitions.js",
+  "src/reports.js",
   "src/workflow.js",
   "src/voice-engine.js",
   "src/db/indexeddb.js",

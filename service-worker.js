@@ -20,6 +20,7 @@ const ASSETS = [
   `./src/exporters.js?${APP_ASSET_QUERY}`,
   `./src/parser.js?${APP_ASSET_QUERY}`,
   `./src/requisitions.js?${APP_ASSET_QUERY}`,
+  `./src/reports.js?${APP_ASSET_QUERY}`,
   `./src/storage.js?${APP_ASSET_QUERY}`,
   `./src/supabase.js?${APP_ASSET_QUERY}`,
   `./src/version.js?${APP_ASSET_QUERY}`,

@@ -9,6 +9,7 @@ export const PERMISSIONS = Object.freeze({
   readRequisitions: "requisitions.read",
   updateRequisitions: "requisitions.update",
   receiveRequisitions: "requisitions.receive",
+  readReports: "reports.read",
   technicalConfig: "config.technical"
 });
 

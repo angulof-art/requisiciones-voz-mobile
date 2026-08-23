@@ -70,6 +70,7 @@ import {
   signOut
 } from "./auth/session.js?v=2.0.0-beta.2";
 import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-beta.2";
+import { buildOperationalReport } from "./reports.js?v=2.0.0-beta.2";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
@@ -172,6 +173,17 @@ const els = {
   inboxCount: document.querySelector("#inboxCount"),
   inboxList: document.querySelector("#inboxList"),
   inboxEmpty: document.querySelector("#inboxEmpty"),
+  reportDateFrom: document.querySelector("#reportDateFrom"),
+  reportDateTo: document.querySelector("#reportDateTo"),
+  reportLocation: document.querySelector("#reportLocation"),
+  reportDepartment: document.querySelector("#reportDepartment"),
+  reportStatus: document.querySelector("#reportStatus"),
+  reportKpis: document.querySelector("#reportKpis"),
+  reportTopRequested: document.querySelector("#reportTopRequested"),
+  reportUnavailable: document.querySelector("#reportUnavailable"),
+  reportSubstitutions: document.querySelector("#reportSubstitutions"),
+  reportDepartments: document.querySelector("#reportDepartments"),
+  reportsEmpty: document.querySelector("#reportsEmpty"),
   catalogImport: document.querySelector("#catalogImport"),
   catalogSearch: document.querySelector("#catalogSearch"),
   catalogStatus: document.querySelector("#catalogStatus"),
@@ -377,6 +389,11 @@ function bindEvents() {
   els.saveTemplateButton.addEventListener("click", saveCurrentAsTemplate);
   els.inboxStatus.addEventListener("change", renderInbox);
   els.inboxList.addEventListener("click", handleInboxAction);
+  [els.reportDateFrom, els.reportDateTo, els.reportLocation, els.reportDepartment, els.reportStatus]
+    .forEach((input) => {
+      input.addEventListener("input", renderReports);
+      input.addEventListener("change", renderReports);
+    });
 
   els.catalogForm.addEventListener("submit", saveCatalogProduct);
   els.resetCatalogForm.addEventListener("click", resetCatalogForm);
@@ -421,6 +438,7 @@ function navigate(target) {
     history: "Historial",
     favorites: "Favoritos",
     inbox: "Pedidos recibidos",
+    reports: "Dashboard operativo",
     catalog: "Catálogo",
     config: "Configuración",
     sync: "Estado",
@@ -431,6 +449,7 @@ function navigate(target) {
   if (target === "history") renderHistory();
   if (target === "favorites") renderFavorites();
   if (target === "inbox") renderInbox();
+  if (target === "reports") renderReports();
   if (target === "catalog") renderCatalog();
   if (target === "sync") renderSync();
   if (target === "profile") renderUserContext();
@@ -1887,6 +1906,7 @@ function render() {
   renderHistory();
   renderFavorites();
   renderInbox();
+  renderReports();
   renderCatalog();
   renderConnection();
   renderRecentNames();
@@ -2138,6 +2158,51 @@ function renderInbox() {
     els.inboxList.append(card);
   });
   els.inboxEmpty.classList.toggle("visible", rows.length === 0);
+}
+
+function renderReports() {
+  if (!state || !userContext || !hasPermission(userContext, PERMISSIONS.readReports)) return;
+  const locationValue = els.reportLocation.value || "all";
+  const departmentValue = els.reportDepartment.value || "all";
+  els.reportLocation.innerHTML = ['<option value="all">Todas</option>', ...userContext.locations
+    .filter((location) => location.organization_id === userContext.organizationId)
+    .map((location) => `<option value="${escapeHtml(location.id)}">${escapeHtml(location.name)}</option>`)].join("");
+  els.reportLocation.value = [...els.reportLocation.options].some((option) => option.value === locationValue) ? locationValue : "all";
+  els.reportDepartment.innerHTML = ['<option value="all">Todos</option>', ...userContext.departments
+    .filter((department) => els.reportLocation.value === "all" || department.location_id === els.reportLocation.value)
+    .map((department) => `<option value="${escapeHtml(department.id)}">${escapeHtml(department.name)}</option>`)].join("");
+  els.reportDepartment.value = [...els.reportDepartment.options].some((option) => option.value === departmentValue) ? departmentValue : "all";
+  const report = buildOperationalReport(state.requisitions, {
+    dateFrom: els.reportDateFrom.value,
+    dateTo: els.reportDateTo.value,
+    locationId: els.reportLocation.value,
+    departmentId: els.reportDepartment.value,
+    status: els.reportStatus.value
+  }, { departments: userContext.departments });
+  const kpis = [
+    ["Pedidos hoy", report.kpis.today],
+    ["Pendientes", report.kpis.pending],
+    ["Preparando", report.kpis.preparing],
+    ["Parciales", report.kpis.partial],
+    ["Entregados", report.kpis.delivered],
+    ["Urgentes", report.kpis.urgent],
+    ["Sin existencia", report.kpis.unavailable],
+    ["Atención promedio", `${report.kpis.averageAttentionHours} h`]
+  ];
+  els.reportKpis.innerHTML = kpis.map(([label, value]) => `<div><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></div>`).join("");
+  renderProductReport(els.reportTopRequested, report.requestedProducts, "Cantidad");
+  renderProductReport(els.reportUnavailable, report.unavailableProducts, "Eventos");
+  renderProductReport(els.reportSubstitutions, report.substitutions, "Eventos");
+  els.reportDepartments.innerHTML = report.departments.length ? `<table class="report-table"><thead><tr><th>Departamento</th><th>Pedidos</th><th>Cumplimiento</th><th>Tiempo</th></tr></thead><tbody>${report.departments.map((department) => `<tr><td>${escapeHtml(department.name)}</td><td>${department.count}</td><td>${department.fulfillmentPercent}%</td><td>${department.averageAttentionHours} h</td></tr>`).join("")}</tbody></table>` : '<p class="hint">Sin datos.</p>';
+  els.reportsEmpty.classList.toggle("visible", report.rows.length === 0);
+}
+
+function renderProductReport(target, rows, valueLabel) {
+  target.innerHTML = rows.length ? `<table class="report-table"><thead><tr><th>Producto</th><th>${escapeHtml(valueLabel)}</th><th>Unidad</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.productName)}</td><td>${formatReportNumber(row.value)}</td><td>${escapeHtml(row.unit || "-")}</td></tr>`).join("")}</tbody></table>` : '<p class="hint">Sin datos.</p>';
+}
+
+function formatReportNumber(value) {
+  return new Intl.NumberFormat("es-CR", { maximumFractionDigits: 3 }).format(Number(value) || 0);
 }
 
 function renderCatalog() {
