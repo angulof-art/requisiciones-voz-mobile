@@ -199,8 +199,17 @@ Estado: completada en este documento.
 
 ### Fase 2 - Datos locales
 
-IndexedDB, migracion V10 verificable, respaldo, cola con reintentos y pruebas de
-cuota, cierre inesperado y offline.
+Estado: completada en `2.0.0-beta.2`.
+
+- IndexedDB es la fuente principal con stores e indices separados.
+- La migracion V10 copia, valida y conserva las seis claves originales.
+- La migracion es idempotente y reanudable despues de una interrupcion.
+- La cola consolida cambios y registra reintentos con backoff.
+- La UI espera la escritura real y muestra los errores de guardado.
+- Las pruebas cubren corrupcion parcial, reapertura, fallback, 1.000 productos y
+  5.000 requisiciones.
+
+Detalles operativos: `docs/LOCAL_STORAGE_MIGRATION.md`.
 
 ### Fase 3 - Auth y multiorganizacion
 
@@ -266,4 +275,3 @@ Una fase termina solo cuando sus pruebas pasan, la migracion es reversible y no
 existe regresion en creacion manual, voz, catalogo, historial, exportaciones,
 offline o sincronizacion. Auth no se activara en produccion hasta que los datos
 existentes tengan organizacion y propietario validos.
-

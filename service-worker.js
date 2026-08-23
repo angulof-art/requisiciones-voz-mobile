@@ -11,6 +11,8 @@ const ASSETS = [
   `./src/catalog.js?${APP_ASSET_QUERY}`,
   `./src/catalog-data.js?${APP_ASSET_QUERY}`,
   `./src/config.js?${APP_ASSET_QUERY}`,
+  `./src/db/indexeddb.js?${APP_ASSET_QUERY}`,
+  `./src/db/migrate-v10.js?${APP_ASSET_QUERY}`,
   `./src/exporters.js?${APP_ASSET_QUERY}`,
   `./src/parser.js?${APP_ASSET_QUERY}`,
   `./src/requisitions.js?${APP_ASSET_QUERY}`,

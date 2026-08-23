@@ -3,9 +3,9 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=2.0.0-beta.1";
-import { downloadExcel, printPdf } from "./exporters.js?v=2.0.0-beta.1";
-import { parseRequisitionText } from "./parser.js?v=2.0.0-beta.1";
+} from "./catalog.js?v=2.0.0-beta.2";
+import { downloadExcel, printPdf } from "./exporters.js?v=2.0.0-beta.2";
+import { parseRequisitionText } from "./parser.js?v=2.0.0-beta.2";
 import {
   STATUS,
   addChange,
@@ -23,10 +23,14 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=2.0.0-beta.1";
+} from "./requisitions.js?v=2.0.0-beta.2";
 import {
   clearCurrentRequisition,
+  getStorageDiagnostics,
+  hasDueSyncEntries,
   loadAppState,
+  markSyncQueueFailed,
+  markSyncQueueSyncing,
   queueSyncChange,
   rememberName,
   saveCatalog,
@@ -35,7 +39,7 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=2.0.0-beta.1";
+} from "./storage.js?v=2.0.0-beta.2";
 import {
   classifySupabaseError,
   fetchRequisitionsFromSupabase,
@@ -44,10 +48,10 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=2.0.0-beta.1";
-import { APP_VERSION } from "./version.js?v=2.0.0-beta.1";
+} from "./supabase.js?v=2.0.0-beta.2";
+import { APP_VERSION } from "./version.js?v=2.0.0-beta.2";
 
-const state = loadAppState();
+let state = null;
 const undoStack = [];
 let recognition = null;
 let isListening = false;
@@ -67,6 +71,7 @@ let isCloudSyncing = false;
 let deferredInstallPrompt = null;
 let waitingServiceWorker = null;
 let serviceWorkerReloading = false;
+let localSaveChain = Promise.resolve();
 
 const els = {
   screenTitle: document.querySelector("#screenTitle"),
@@ -86,6 +91,7 @@ const els = {
   processTranscriptButton: document.querySelector("#processTranscriptButton"),
   lastTranscript: document.querySelector("#lastTranscript"),
   autosaveState: document.querySelector("#autosaveState"),
+  retryLocalSaveButton: document.querySelector("#retryLocalSaveButton"),
   itemCount: document.querySelector("#itemCount"),
   requisitionNumber: document.querySelector("#requisitionNumber"),
   statusBadge: document.querySelector("#statusBadge"),
@@ -125,6 +131,7 @@ const els = {
   hourFormat: document.querySelector("#hourFormat"),
   textSize: document.querySelector("#textSize"),
   appVersion: document.querySelector("#appVersion"),
+  localStorageStatus: document.querySelector("#localStorageStatus"),
   installAppButton: document.querySelector("#installAppButton"),
   supabaseUrl: document.querySelector("#supabaseUrl"),
   supabaseKey: document.querySelector("#supabaseKey"),
@@ -148,14 +155,22 @@ const els = {
 
 boot();
 
-function boot() {
+async function boot() {
   els.appVersion.textContent = APP_VERSION;
   setupInstallPrompt();
   populateUnitSelects();
   setupSpeechRecognition();
+  try {
+    state = await loadAppState();
+  } catch (error) {
+    showFatalStorageError(error);
+    return;
+  }
   bindEvents();
   applySettingsToForm();
   render();
+  setLocalSaveState("saved");
+  renderStorageStatus();
   registerServiceWorker();
   verifySupabaseConnection();
 }
@@ -167,13 +182,13 @@ function bindEvents() {
 
   els.requestedBy.addEventListener("input", () => {
     state.current.requestedBy = els.requestedBy.value;
-    saveCurrentRequisition(state.current);
     renderResponsibleState();
     scheduleAutoSave();
   });
 
   els.voiceButton.addEventListener("click", toggleSpeech);
   els.processTranscriptButton.addEventListener("click", processTranscript);
+  els.retryLocalSaveButton.addEventListener("click", autoSaveOrder);
   els.addRowButton.addEventListener("click", addManualRow);
   els.undoButton.addEventListener("click", undoLast);
   els.combineDuplicatesButton.addEventListener("click", showDuplicateSuggestion);
@@ -315,7 +330,6 @@ function handleItemEdit(event) {
   if (field === "unit") item.unitAllowed = true;
   item.confidence = item.needsReview ? Math.min(item.confidence || 0, 69) : Math.max(item.confidence || 85, 85);
   state.current.updatedAt = new Date().toISOString();
-  persistCurrent();
   renderSummary();
   renderValidation({ ok: true, errors: [], fieldErrors: {} });
   renderResponsibleState();
@@ -393,7 +407,7 @@ function handleItemAction(event) {
   render();
 }
 
-function confirmOrder() {
+async function confirmOrder() {
   state.current.requestedBy = els.requestedBy.value.trim();
   const validation = validateRequisition(state.current, state.catalog, "confirm");
   renderValidation(validation);
@@ -402,17 +416,17 @@ function confirmOrder() {
     return;
   }
   markConfirmed(state.current);
-  saveOrderAndQueue();
+  if (!(await saveOrderAndQueue())) return;
   toast("Pedido confirmado correctamente.");
   render();
 }
 
-function exportPdf() {
+async function exportPdf() {
   if (!validateBeforeExport()) return;
   try {
     printPdf(state.current, state.settings.hourFormat);
     markExported(state.current);
-    saveOrderAndQueue();
+    if (!(await saveOrderAndQueue())) return;
     toast("PDF listo para imprimir o guardar.");
     render();
   } catch (error) {
@@ -420,11 +434,11 @@ function exportPdf() {
   }
 }
 
-function exportCsv() {
+async function exportCsv() {
   if (!validateBeforeExport()) return;
   downloadExcel(state.current, state.catalog, state.settings.hourFormat);
   markExported(state.current);
-  saveOrderAndQueue();
+  if (!(await saveOrderAndQueue())) return;
   toast("Archivo Excel generado.");
   render();
 }
@@ -478,35 +492,61 @@ function pushUndo() {
   if (undoStack.length > 30) undoStack.shift();
 }
 
-function saveOrderAndQueue() {
+async function saveOrderAndQueue() {
   state.current.requestedBy = els.requestedBy.value.trim();
-  state.recentNames = rememberName(state.current.requestedBy);
-  state.requisitions = upsertRequisition(state.current);
-  state.syncQueue = queueSyncChange("requisition", { id: state.current.id });
-  persistCurrent();
-  render();
-  scheduleAutoSync();
+  setLocalSaveState("saving");
+  try {
+    await enqueueLocalSave(async () => {
+      state.recentNames = await rememberName(state.current.requestedBy, state.recentNames);
+      state.requisitions = await upsertRequisition(state.current, state.requisitions);
+      state.syncQueue = await queueSyncChange(
+        "requisition",
+        { id: state.current.id },
+        state.syncQueue
+      );
+      await persistCurrent();
+    });
+    setLocalSaveState("saved");
+    render();
+    scheduleAutoSync();
+    return true;
+  } catch (error) {
+    handleLocalSaveError(error);
+    return false;
+  }
 }
 
-function autoSaveOrder() {
+async function autoSaveOrder() {
   state.current.requestedBy = els.requestedBy.value.trim();
   state.current.updatedAt = new Date().toISOString();
   if (!["confirmed", "exported", "voided"].includes(state.current.status)) {
     state.current.status = state.current.items.some((item) => item.needsReview) ? "review" : "draft";
   }
-  state.requisitions = upsertRequisition(state.current);
-  state.syncQueue = queueSyncChange("requisition", { id: state.current.id });
-  persistCurrent();
-  els.autosaveState.textContent = navigator.onLine ? "Guardando..." : "Guardado local";
-  els.autosaveState.classList.remove("synced");
-  scheduleAutoSync();
+  setLocalSaveState("saving");
+  try {
+    await enqueueLocalSave(async () => {
+      state.requisitions = await upsertRequisition(state.current, state.requisitions);
+      state.syncQueue = await queueSyncChange(
+        "requisition",
+        { id: state.current.id },
+        state.syncQueue
+      );
+      await persistCurrent();
+    });
+    setLocalSaveState("saved");
+    scheduleAutoSync();
+    return true;
+  } catch (error) {
+    handleLocalSaveError(error);
+    return false;
+  }
 }
 
 function scheduleAutoSave() {
   window.clearTimeout(autoSaveTimer);
-  autoSaveTimer = window.setTimeout(() => {
-    if (state.current.items.length) autoSaveOrder();
-    else persistCurrent();
+  autoSaveTimer = window.setTimeout(async () => {
+    if (state.current.items.length) await autoSaveOrder();
+    else await persistCurrentSafely();
   }, 450);
 }
 
@@ -517,50 +557,83 @@ function scheduleAutoSync() {
     !isSupabaseReady(state.settings.supabase) ||
     isCloudSyncing
   ) return;
+  if (!hasDueSyncEntries(state.syncQueue)) {
+    scheduleNextSyncRetry();
+    return;
+  }
   window.clearTimeout(autoSyncTimer);
   autoSyncTimer = window.setTimeout(() => performSupabaseSync(true, true), 900);
 }
 
-function startNewOrder() {
-  cancelDictationSession();
-  const previousWasSaved = preserveCurrentOrder();
-  clearCurrentRequisition();
-  state.current = createRequisition(state.requisitions);
-  undoStack.length = 0;
-  replaceIndex = null;
-  els.transcriptInput.value = "";
-  els.lastTranscript.hidden = true;
-  persistCurrent();
-  render();
-  navigate("new");
-  els.requestedBy.focus();
-  if (previousWasSaved) scheduleAutoSync();
-  toast(
-    previousWasSaved
-      ? "Pedido anterior guardado en el historial. Nuevo pedido listo."
-      : "Nuevo pedido listo."
+function scheduleNextSyncRetry() {
+  const nextRetry = state.syncQueue
+    .filter((entry) => entry.status === "failed" && entry.nextRetryAt)
+    .map((entry) => Date.parse(entry.nextRetryAt))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)[0];
+  if (!nextRetry) return;
+  window.clearTimeout(autoSyncTimer);
+  autoSyncTimer = window.setTimeout(
+    () => performSupabaseSync(true, true),
+    Math.max(1_000, nextRetry - Date.now())
   );
 }
 
-function preserveCurrentOrder() {
+async function startNewOrder() {
+  cancelDictationSession();
+  try {
+    const previousWasSaved = await preserveCurrentOrder();
+    await clearCurrentRequisition();
+    state.current = createRequisition(state.requisitions);
+    undoStack.length = 0;
+    replaceIndex = null;
+    els.transcriptInput.value = "";
+    els.lastTranscript.hidden = true;
+    await persistCurrent();
+    setLocalSaveState("saved");
+    render();
+    navigate("new");
+    els.requestedBy.focus();
+    if (previousWasSaved) scheduleAutoSync();
+    toast(
+      previousWasSaved
+        ? "Pedido anterior guardado en el historial. Nuevo pedido listo."
+        : "Nuevo pedido listo."
+    );
+  } catch (error) {
+    handleLocalSaveError(error);
+  }
+}
+
+async function preserveCurrentOrder() {
   state.current.requestedBy = els.requestedBy.value.trim();
   if (!isMeaningfulRequisition(state.current)) return false;
   state.current.updatedAt = new Date().toISOString();
   if (!["confirmed", "exported", "voided"].includes(state.current.status)) {
     state.current.status = state.current.items.some((item) => item.needsReview) ? "review" : "draft";
   }
-  state.requisitions = upsertRequisition(state.current);
-  state.syncQueue = queueSyncChange("requisition", { id: state.current.id });
-  state.recentNames = rememberName(state.current.requestedBy);
-  persistCurrent();
-  return true;
+  try {
+    await enqueueLocalSave(async () => {
+      state.requisitions = await upsertRequisition(state.current, state.requisitions);
+      state.syncQueue = await queueSyncChange(
+        "requisition",
+        { id: state.current.id },
+        state.syncQueue
+      );
+      state.recentNames = await rememberName(state.current.requestedBy, state.recentNames);
+      await persistCurrent();
+    });
+    return true;
+  } catch (error) {
+    throw error;
+  }
 }
 
 function importCatalog(event) {
   const [file] = event.target.files || [];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     const imported = catalogFromCsv(String(reader.result || ""));
     if (!imported.length) {
       toast("No se encontraron productos en el catálogo.");
@@ -569,8 +642,17 @@ function importCatalog(event) {
     const byCode = new Map(state.catalog.map((product) => [product.code || product.id, product]));
     for (const product of imported) byCode.set(product.code || product.id, product);
     state.catalog = [...byCode.values()];
-    saveCatalog(state.catalog);
-    state.syncQueue = queueSyncChange("catalog", { count: imported.length });
+    try {
+      await saveCatalog(state.catalog);
+      state.syncQueue = await queueSyncChange(
+        "catalog",
+        { count: imported.length },
+        state.syncQueue
+      );
+    } catch (error) {
+      handleLocalSaveError(error);
+      return;
+    }
     renderCatalog();
     toast(`${imported.length} productos importados.`);
     event.target.value = "";
@@ -578,7 +660,7 @@ function importCatalog(event) {
   reader.readAsText(file, "utf-8");
 }
 
-function saveCatalogProduct(event) {
+async function saveCatalogProduct(event) {
   event.preventDefault();
   const product = normalizeCatalogProduct({
     id: els.catalogId.value || "",
@@ -593,8 +675,13 @@ function saveCatalogProduct(event) {
   const index = state.catalog.findIndex((entry) => entry.id === product.id || entry.code === product.code);
   if (index >= 0) state.catalog[index] = product;
   else state.catalog.push(product);
-  saveCatalog(state.catalog);
-  state.syncQueue = queueSyncChange("catalog", { id: product.id });
+  try {
+    await saveCatalog(state.catalog);
+    state.syncQueue = await queueSyncChange("catalog", { id: product.id }, state.syncQueue);
+  } catch (error) {
+    handleLocalSaveError(error);
+    return;
+  }
   resetCatalogForm();
   renderCatalog();
   toast("Producto guardado en catálogo.");
@@ -607,7 +694,7 @@ function resetCatalogForm() {
   els.catalogActive.checked = true;
 }
 
-function handleCatalogAction(event) {
+async function handleCatalogAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
   const product = state.catalog.find((entry) => entry.id === button.dataset.id);
@@ -625,43 +712,63 @@ function handleCatalogAction(event) {
   if (button.dataset.action === "toggle") {
     product.active = !product.active;
     product.updatedAt = new Date().toISOString();
-    saveCatalog(state.catalog);
+    try {
+      await saveCatalog(state.catalog);
+    } catch (error) {
+      handleLocalSaveError(error);
+      return;
+    }
     renderCatalog();
   }
 }
 
-function handleHistoryAction(event) {
+async function handleHistoryAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
   const requisition = state.requisitions.find((entry) => entry.id === button.dataset.id);
   if (!requisition) return;
   if (button.dataset.action === "open") {
     cancelDictationSession();
-    if (state.current.id !== requisition.id) preserveCurrentOrder();
+    try {
+      if (state.current.id !== requisition.id) await preserveCurrentOrder();
+    } catch (error) {
+      handleLocalSaveError(error);
+      return;
+    }
     state.current = clone(requisition);
     els.transcriptInput.value = "";
     undoStack.length = 0;
     replaceIndex = null;
-    persistCurrent();
+    if (!(await persistCurrentSafely())) return;
     render();
     navigate("new");
     toast(["draft", "review"].includes(requisition.status) ? "Borrador abierto." : "Pedido abierto.");
   }
   if (button.dataset.action === "duplicate") {
     cancelDictationSession();
-    preserveCurrentOrder();
+    try {
+      await preserveCurrentOrder();
+    } catch (error) {
+      handleLocalSaveError(error);
+      return;
+    }
     const copy = createRequisition(state.requisitions);
     copy.requestedBy = requisition.requestedBy;
     copy.items = requisition.items.map((item) => ({ ...clone(item), id: createId("item") }));
     copy.originalTranscript = requisition.originalTranscript;
     addChange(copy, "duplicar_pedido", requisition, copy);
     state.current = copy;
-    state.requisitions = upsertRequisition(copy);
-    state.syncQueue = queueSyncChange("requisition", { id: copy.id });
+    try {
+      state.requisitions = await upsertRequisition(copy, state.requisitions);
+      state.syncQueue = await queueSyncChange("requisition", { id: copy.id }, state.syncQueue);
+    } catch (error) {
+      handleLocalSaveError(error);
+      return;
+    }
     els.transcriptInput.value = "";
     undoStack.length = 0;
     replaceIndex = null;
-    persistCurrent();
+    if (!(await persistCurrentSafely())) return;
     render();
     navigate("new");
     toast("Pedido duplicado como borrador.");
@@ -670,19 +777,32 @@ function handleHistoryAction(event) {
   if (button.dataset.action === "void") {
     if (!window.confirm("¿Anular este pedido sin eliminarlo definitivamente?")) return;
     markVoided(requisition);
-    state.requisitions = upsertRequisition(requisition);
-    state.syncQueue = queueSyncChange("requisition", { id: requisition.id });
-    saveSyncQueue(state.syncQueue);
+    try {
+      state.requisitions = await upsertRequisition(requisition, state.requisitions);
+      state.syncQueue = await queueSyncChange(
+        "requisition",
+        { id: requisition.id },
+        state.syncQueue
+      );
+    } catch (error) {
+      handleLocalSaveError(error);
+      return;
+    }
     renderHistory();
     toast("Pedido anulado.");
     scheduleAutoSync();
   }
 }
 
-function saveUiSettings() {
+async function saveUiSettings() {
   state.settings.hourFormat = els.hourFormat.value;
   state.settings.textSize = els.textSize.value;
-  saveSettings(state.settings);
+  try {
+    await saveSettings(state.settings);
+  } catch (error) {
+    handleLocalSaveError(error);
+    return;
+  }
   document.body.classList.toggle("text-large", state.settings.textSize === "large");
   render();
 }
@@ -698,7 +818,7 @@ function applySettingsToForm() {
   els.supabaseAutoSync.checked = Boolean(state.settings.supabase.autoSync);
 }
 
-function saveSupabaseSettingsFromForm(options = {}) {
+async function saveSupabaseSettingsFromForm(options = {}) {
   const { announce = true } = options;
   const url = normalizeSupabaseUrl(els.supabaseUrl.value);
   const publishableKey = els.supabaseKey.value.trim() || state.settings.supabase.publishableKey || "";
@@ -719,7 +839,12 @@ function saveSupabaseSettingsFromForm(options = {}) {
     integrationVersion: state.settings.supabase.integrationVersion,
     lastSyncAt: state.settings.supabase.lastSyncAt || ""
   };
-  saveSettings(state.settings);
+  try {
+    await saveSettings(state.settings);
+  } catch (error) {
+    handleLocalSaveError(error);
+    return false;
+  }
   applySettingsToForm();
   supabaseConnectionState = state.settings.supabase.enabled ? "checking" : "disabled";
   if (announce) {
@@ -744,7 +869,7 @@ function normalizeWorkspaceId(value) {
 }
 
 async function testSupabaseConnection() {
-  if (!saveSupabaseSettingsFromForm({ announce: false })) return;
+  if (!(await saveSupabaseSettingsFromForm({ announce: false }))) return;
   if (!isSupabaseReady(state.settings.supabase)) return;
   try {
     setCloudBusy(true);
@@ -764,13 +889,13 @@ async function testSupabaseConnection() {
 }
 
 async function uploadLocalToSupabase() {
-  if (!saveSupabaseSettingsFromForm({ announce: false })) return;
+  if (!(await saveSupabaseSettingsFromForm({ announce: false }))) return;
   if (!isSupabaseReady(state.settings.supabase)) return;
   await performSupabaseSync(false, false);
 }
 
 async function downloadCloudToLocal() {
-  if (!saveSupabaseSettingsFromForm({ announce: false })) return;
+  if (!(await saveSupabaseSettingsFromForm({ announce: false }))) return;
   if (!isSupabaseReady(state.settings.supabase)) return;
   await performSupabaseDownload(false);
 }
@@ -813,6 +938,7 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
     supabaseConnectionState = "checking";
     if (!silent) renderSupabaseMessage("Subiendo datos locales...");
     renderConnection();
+    state.syncQueue = await markSyncQueueSyncing(state.syncQueue);
     await testSupabase(state.settings.supabase);
     const syncResult = await syncAllToSupabase(
       state.settings.supabase,
@@ -822,14 +948,14 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
     if (syncResult.renames.length) {
       const currentRename = syncResult.renames.find((rename) => rename.id === state.current.id);
       if (currentRename) state.current.requisitionNumber = currentRename.requisitionNumber;
-      saveRequisitions(state.requisitions);
-      persistCurrent();
+      await saveRequisitions(state.requisitions);
+      await persistCurrent();
     }
     if (downloadAfter) await refreshHistoryFromSupabase();
     state.settings.supabase.lastSyncAt = new Date().toISOString();
     state.syncQueue = [];
-    saveSyncQueue([]);
-    saveSettings(state.settings);
+    await saveSyncQueue([]);
+    await saveSettings(state.settings);
     supabaseConnectionState = "connected";
     els.autosaveState.textContent = "Sincronizado";
     els.autosaveState.classList.add("synced");
@@ -844,10 +970,19 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
     render();
     if (!silent) toast("Datos locales subidos correctamente.");
   } catch (error) {
+    if (state.syncQueue.length) {
+      try {
+        state.syncQueue = await markSyncQueueFailed(state.syncQueue, error);
+        scheduleAutoSync();
+      } catch (storageError) {
+        handleLocalSaveError(storageError);
+      }
+    }
     handleSupabaseError(error, silent);
   } finally {
     isCloudSyncing = false;
     setCloudBusy(false);
+    if (state.syncQueue.length) scheduleAutoSync();
   }
 }
 
@@ -862,7 +997,7 @@ async function performSupabaseDownload(silent = false) {
     await testSupabase(state.settings.supabase);
     await refreshHistoryFromSupabase();
     state.settings.supabase.lastSyncAt = new Date().toISOString();
-    saveSettings(state.settings);
+    await saveSettings(state.settings);
     supabaseConnectionState = "connected";
     renderSupabaseMessage("Datos descargados y combinados sin borrar datos locales.");
     render();
@@ -908,10 +1043,10 @@ async function refreshHistoryFromSupabase() {
     new Date(currentVersion.updatedAt).getTime() > new Date(state.current.updatedAt).getTime()
   ) {
     state.current = clone(currentVersion);
-    persistCurrent();
+    await persistCurrent();
   }
   state.requisitions = merged;
-  saveRequisitions(state.requisitions);
+  await saveRequisitions(state.requisitions);
   renderHistory();
 }
 
@@ -1384,8 +1519,58 @@ function populateUnitSelects() {
   els.catalogDefaultUnit.value = "und";
 }
 
-function persistCurrent() {
-  saveCurrentRequisition(state.current);
+async function persistCurrent() {
+  await saveCurrentRequisition(state.current);
+}
+
+async function persistCurrentSafely() {
+  setLocalSaveState("saving");
+  try {
+    await enqueueLocalSave(() => persistCurrent());
+    setLocalSaveState("saved");
+    return true;
+  } catch (error) {
+    handleLocalSaveError(error);
+    return false;
+  }
+}
+
+function enqueueLocalSave(operation) {
+  const next = localSaveChain.then(operation, operation);
+  localSaveChain = next.catch(() => {});
+  return next;
+}
+
+function setLocalSaveState(status) {
+  const labels = {
+    saving: "Guardando…",
+    saved: state?.syncQueue?.length ? "Guardado · pendiente" : "Guardado",
+    error: "Error al guardar"
+  };
+  els.autosaveState.textContent = labels[status] || labels.saved;
+  els.autosaveState.classList.toggle("synced", status === "saved" && !state?.syncQueue?.length);
+  els.autosaveState.classList.toggle("error", status === "error");
+  els.retryLocalSaveButton.hidden = status !== "error";
+}
+
+function handleLocalSaveError(error) {
+  console.error("No se pudo guardar en el dispositivo.", error);
+  setLocalSaveState("error");
+  toast("No se pudo guardar el pedido en este dispositivo.");
+}
+
+function renderStorageStatus() {
+  const storage = getStorageDiagnostics();
+  els.localStorageStatus.textContent = storage.label;
+  els.localStorageStatus.title = storage.error || "";
+}
+
+function showFatalStorageError(error) {
+  console.error("No se pudo cargar el almacenamiento local.", error);
+  els.autosaveState.textContent = "Error al cargar datos";
+  els.autosaveState.classList.add("error");
+  els.retryLocalSaveButton.hidden = true;
+  toast("No se pudieron cargar los datos locales. Recargue la aplicación.");
 }
 
 function toast(message) {

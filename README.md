@@ -2,7 +2,7 @@
 
 Aplicacion web movil para crear pedidos o requisiciones por voz.
 
-Version actual: **2.0.0-beta.1**. La estrategia completa de evolucion y
+Version actual: **2.0.0-beta.2**. La estrategia completa de evolucion y
 migracion segura esta en `V2_IMPLEMENTATION_PLAN.md`.
 
 ## Funciones incluidas
@@ -16,7 +16,9 @@ migracion segura esta en `V2_IMPLEMENTATION_PLAN.md`.
 - Agregar, eliminar, duplicar, redictar, combinar duplicados y deshacer.
 - Boton `Nuevo pedido` que conserva el pedido anterior como borrador antes de
   iniciar una requisicion limpia.
-- Guardado automatico local y sincronizacion bidireccional con Supabase.
+- Guardado automatico en IndexedDB y sincronizacion bidireccional con Supabase.
+- Migracion V10 idempotente que conserva intacto el respaldo `localStorage`.
+- Estados reales de guardado, fallback controlado y cola con backoff.
 - Confirmar, exportar y anular sin borrar historial.
 - Numeracion diaria tipo `REQ-20260803-0001`.
 - Historial combinado local/Supabase con busqueda, filtros, resumen de productos,

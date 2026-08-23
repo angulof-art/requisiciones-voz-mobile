@@ -493,6 +493,30 @@ h2 {
   color: var(--brand-dark);
 }
 
+.autosave-actions,
+.storage-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.autosave-state.error {
+  background: #fff0ef;
+  color: var(--danger);
+}
+
+.storage-status {
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.storage-status strong {
+  color: var(--ink);
+}
+
 .items-heading {
   align-items: flex-end;
   padding-top: 0.15rem;

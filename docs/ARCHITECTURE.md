@@ -12,7 +12,9 @@ externos, pruebas con Node y migraciones SQL separadas.
 - `src/catalog.js`: catalogo maestro, unidades y coincidencias.
 - `src/requisitions.js`: pedidos, validaciones, numeracion, cambios y combinacion
   segura del historial local/remoto.
-- `src/storage.js`: persistencia local y cola de sincronizacion.
+- `src/storage.js`: fachada asincrona, fallback y cola de sincronizacion.
+- `src/db/indexeddb.js`: base local transaccional, stores, indices y paginacion.
+- `src/db/migrate-v10.js`: copia V10 idempotente y verificacion de integridad.
 - `src/exporters.js`: PDF imprimible, Excel `.xlsx` y CSV compatible con Google Sheets.
 - `src/config.js`: configuracion publica del proyecto Supabase del piloto.
 - `src/version.js`: version visible y referencia unica para cache busting.
@@ -22,10 +24,20 @@ externos, pruebas con Node y migraciones SQL separadas.
 
 ## Datos
 
-La fuente local permite uso sin conexion. La configuracion publica incluida
+IndexedDB es la fuente local principal y permite uso sin conexion. Las seis
+claves V10 de `localStorage` se conservan como respaldo; una migracion automatica
+copia por ID, verifica conteos y solo despues marca su finalizacion. Si IndexedDB
+no esta disponible, la fachada entra en modo compatibilidad y propaga cualquier
+fallo de escritura a la interfaz.
+
+La configuracion publica incluida
 conecta el piloto a Supabase. La cola sube cambios automaticamente cuando
 regresa la conexion y la aplicacion descarga y combina los pedidos remotos sin
 sobrescribir borradores locales mas recientes.
+
+La cola vive en IndexedDB, consolida actualizaciones redundantes de una misma
+entidad y registra intentos, ultimo error y proximo reintento con backoff. El
+detalle de migracion y rollback esta en `docs/LOCAL_STORAGE_MIGRATION.md`.
 
 La sincronizacion se puede desactivar por dispositivo. La interfaz expone
 operaciones independientes para probar la conexion, subir el estado local y

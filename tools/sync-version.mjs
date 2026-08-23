@@ -22,11 +22,25 @@ const changes = [];
 for (const file of files) {
   const path = join(root, file);
   const current = readFileSync(path, "utf8");
-  const next = current.replace(/\?v=[0-9A-Za-z.-]+/g, `?v=${version}`);
+  let next = current.replace(/\?v=[0-9A-Za-z.-]+/g, `?v=${version}`);
+  if (file === "index.html") {
+    next = next.replace(/(<strong id="appVersion">)[^<]+/, `$1${version}`);
+  }
   if (next !== current) {
     changes.push(file);
     if (!checkOnly) writeFileSync(path, next);
   }
+}
+
+const readmePath = join(root, "README.md");
+const currentReadme = readFileSync(readmePath, "utf8");
+const nextReadme = currentReadme.replace(
+  /Version actual: \*\*[^*]+\*\*/,
+  `Version actual: **${version}**`
+);
+if (nextReadme !== currentReadme) {
+  changes.push("README.md");
+  if (!checkOnly) writeFileSync(readmePath, nextReadme);
 }
 
 const versionPath = join(root, "src/version.js");
@@ -52,4 +66,3 @@ console.log(
       ? `Version ${version} aplicada a ${changes.length} archivos`
       : `Version ${version} ya estaba sincronizada`
 );
-

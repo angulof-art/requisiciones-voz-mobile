@@ -15,6 +15,8 @@ const required = [
   "src/catalog.js",
   "src/catalog-data.js",
   "src/requisitions.js",
+  "src/db/indexeddb.js",
+  "src/db/migrate-v10.js",
   "src/storage.js",
   "src/exporters.js",
   "src/supabase.js",
@@ -84,6 +86,10 @@ assert.ok(app.includes(`from "./version.js?v=${packageJson.version}"`));
 assert.ok(app.includes("beforeinstallprompt"));
 assert.ok(app.includes("registration.waiting"));
 assert.ok(sw.includes("catalog-data.js"));
+assert.ok(sw.includes("db/indexeddb.js"));
+assert.ok(sw.includes("db/migrate-v10.js"));
+assert.ok(index.includes("Almacenamiento local"));
+assert.ok(app.includes("Error al guardar"));
 assert.ok(sql.includes("enable row level security"));
 assert.ok(sql.includes("requisitions"));
 assert.equal(/sb_secret_[A-Za-z0-9_-]+|service_role\s*[:=]\s*[A-Za-z0-9_-]+/.test(allText), false);
