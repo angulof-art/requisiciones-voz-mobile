@@ -3,6 +3,7 @@ import { PUBLIC_APP_CONFIG } from "./config.js?v=2.0.0-beta.2";
 import { IndexedDbRepository, IndexedDbUnavailableError } from "./db/indexeddb.js?v=2.0.0-beta.2";
 import { migrateV10ToIndexedDb } from "./db/migrate-v10.js?v=2.0.0-beta.2";
 import { createRequisition, normalizeRequisition } from "./requisitions.js?v=2.0.0-beta.2";
+import { canSeeRequisitionLocally, hasRole } from "./auth/permissions.js?v=2.0.0-beta.2";
 
 export const STORAGE_KEYS = Object.freeze({
   requisitions: "requisiciones-voz:requisitions:v1",
@@ -16,6 +17,7 @@ export const STORAGE_KEYS = Object.freeze({
 const RETRY_DELAYS = [60_000, 300_000, 900_000, 3_600_000];
 let repository = null;
 let initialization = null;
+let activeContext = null;
 let diagnostics = {
   mode: "initializing",
   label: "Comprobando almacenamiento",
@@ -34,6 +36,61 @@ export async function initializeStorage(options = {}) {
   if (initialization) return initialization;
   initialization = initializeStorageInternal(options);
   return initialization;
+}
+
+export function setStorageContext(context) {
+  activeContext = context || null;
+}
+
+export async function loadCachedAuthContext(userId) {
+  await initializeStorage();
+  if (!repository || !userId) return null;
+  return repository.getAuthContext(userId);
+}
+
+export async function saveCachedAuthContext(context) {
+  await initializeStorage();
+  if (!repository || !context?.userId) return context;
+  return repository.saveAuthContext(context);
+}
+
+export async function claimLegacyLocalData(context) {
+  await initializeStorage();
+  if (!repository || !context?.userId || !hasRole(context, "administrator")) return false;
+  const existingClaim = await repository.getMetadata("phase3_legacy_local_claim");
+  if (existingClaim) return existingClaim.userId === context.userId;
+
+  const requisitions = await repository.getRequisitions();
+  const scopedRequisitions = requisitions.map((entry) =>
+    hasScope(entry) ? entry : applyScope(entry, context)
+  );
+  await repository.saveRequisitions(scopedRequisitions);
+
+  const catalog = await repository.getCatalog();
+  await repository.saveCatalog(catalog.map((product) => ({
+    ...product,
+    organizationId: product.organizationId || context.organizationId,
+    locationId: product.locationId || ""
+  })));
+
+  const queue = await repository.getSyncQueue();
+  await repository.saveSyncQueue(queue.map((entry) => ({
+    ...entry,
+    userId: entry.userId || context.userId,
+    organizationId: entry.organizationId || context.organizationId
+  })));
+
+  const legacyCurrent = await repository.getCurrentRequisition();
+  const scopeKey = currentScopeKey();
+  if (legacyCurrent && !(await repository.getCurrentRequisition(scopeKey))) {
+    await repository.saveCurrentRequisition(applyScope(legacyCurrent, context), scopeKey);
+  }
+  await repository.setMetadata("phase3_legacy_local_claim", {
+    userId: context.userId,
+    organizationId: context.organizationId,
+    claimedAt: new Date().toISOString()
+  });
+  return true;
 }
 
 async function initializeStorageInternal(options) {
@@ -80,25 +137,29 @@ export async function loadAppState() {
     await Promise.all([
       repository.getRequisitions(),
       repository.getCatalog(),
-      repository.getCurrentRequisition(),
+      repository.getCurrentRequisition(currentScopeKey()),
       repository.getRecentNames(),
       repository.getSettings(),
       repository.getSyncQueue()
     ]);
-  const requisitions = storedRequisitions.map(normalizeRequisition);
-  const catalog = mergeCatalogWithSeed(storedCatalog);
+  const requisitions = storedRequisitions
+    .map(normalizeRequisition)
+    .filter((entry) => !activeContext || canSeeRequisitionLocally(activeContext, entry));
+  const catalog = mergeCatalogWithSeed(storedCatalog).filter(
+    (product) => !activeContext || !product.organizationId || product.organizationId === activeContext.organizationId
+  );
   const current = storedCurrent?.id
     ? normalizeRequisition(storedCurrent)
     : createRequisition(requisitions);
   if (catalog.length !== storedCatalog.length) await repository.saveCatalog(catalog);
-  if (!storedCurrent?.id) await repository.saveCurrentRequisition(current);
+  if (!storedCurrent?.id) await repository.saveCurrentRequisition(applyScope(current, activeContext), currentScopeKey());
   return {
     requisitions,
     catalog,
     current,
     recentNames,
     settings: normalizeSettings(storedSettings || {}),
-    syncQueue: storedQueue.map(normalizeQueueEntry)
+    syncQueue: storedQueue.map(normalizeQueueEntry).filter(queueMatchesContext)
   };
 }
 
@@ -132,7 +193,7 @@ export async function getRequisition(id) {
 }
 
 export async function saveRequisitions(requisitions) {
-  const normalized = requisitions.map(normalizeRequisition);
+  const normalized = requisitions.map((entry) => applyScope(normalizeRequisition(entry), activeContext));
   await initializeStorage();
   if (repository) await repository.saveRequisitions(normalized);
   else writeJson(STORAGE_KEYS.requisitions, normalized);
@@ -143,28 +204,28 @@ export async function loadCurrentRequisition(existing = null) {
   await initializeStorage();
   const requisitions = existing || (await loadRequisitions());
   const saved = repository
-    ? await repository.getCurrentRequisition()
+    ? await repository.getCurrentRequisition(currentScopeKey())
     : readJson(STORAGE_KEYS.current, null);
   if (saved?.id) return normalizeRequisition(saved);
   return createRequisition(requisitions);
 }
 
 export async function saveCurrentRequisition(requisition) {
-  const normalized = normalizeRequisition(requisition);
+  const normalized = applyScope(normalizeRequisition(requisition), activeContext);
   await initializeStorage();
-  if (repository) await repository.saveCurrentRequisition(normalized);
+  if (repository) await repository.saveCurrentRequisition(normalized, currentScopeKey());
   else writeJson(STORAGE_KEYS.current, normalized);
   return normalized;
 }
 
 export async function clearCurrentRequisition() {
   await initializeStorage();
-  if (repository) await repository.clearCurrentRequisition();
+  if (repository) await repository.clearCurrentRequisition(currentScopeKey());
   else removeItem(STORAGE_KEYS.current);
 }
 
 export async function upsertRequisition(requisition, existing = null) {
-  const normalized = normalizeRequisition(requisition);
+  const normalized = applyScope(normalizeRequisition(requisition), activeContext);
   await initializeStorage();
   if (repository) await repository.saveRequisition(normalized);
   const requisitions = existing ? [...existing] : await loadRequisitions();
@@ -182,7 +243,11 @@ export async function loadCatalog() {
 }
 
 export async function saveCatalog(catalog) {
-  const normalized = normalizeCatalog(catalog);
+  const normalized = normalizeCatalog(catalog).map((product) => ({
+    ...product,
+    organizationId: product.organizationId || activeContext?.organizationId || "",
+    locationId: product.locationId || ""
+  }));
   await initializeStorage();
   if (repository) await repository.saveCatalog(normalized);
   else writeJson(STORAGE_KEYS.catalog, normalized);
@@ -224,7 +289,7 @@ export async function saveSettings(settings) {
 export async function loadSyncQueue() {
   await initializeStorage();
   const queue = repository ? await repository.getSyncQueue() : readJson(STORAGE_KEYS.syncQueue, []);
-  return Array.isArray(queue) ? queue.map(normalizeQueueEntry) : [];
+  return Array.isArray(queue) ? queue.map(normalizeQueueEntry).filter(queueMatchesContext) : [];
 }
 
 export async function queueSyncChange(type, payload, existing = null) {
@@ -244,7 +309,9 @@ export async function queueSyncChange(type, payload, existing = null) {
     createdAt: now,
     updatedAt: now,
     lastError: "",
-    nextRetryAt: ""
+    nextRetryAt: "",
+    userId: activeContext?.userId || "",
+    organizationId: activeContext?.organizationId || ""
   });
   const next = queue.slice(0, 500);
   await saveSyncQueue(next);
@@ -252,9 +319,17 @@ export async function queueSyncChange(type, payload, existing = null) {
 }
 
 export async function saveSyncQueue(queue) {
-  const normalized = queue.map(normalizeQueueEntry);
+  const normalized = queue.map((entry) => ({
+    ...normalizeQueueEntry(entry),
+    userId: entry.userId || activeContext?.userId || "",
+    organizationId: entry.organizationId || activeContext?.organizationId || ""
+  }));
   await initializeStorage();
-  if (repository) await repository.saveSyncQueue(normalized);
+  if (repository) {
+    const all = await repository.getSyncQueue();
+    const otherContexts = all.filter((entry) => !queueMatchesContext(entry));
+    await repository.saveSyncQueue([...otherContexts, ...normalized]);
+  }
   else writeJson(STORAGE_KEYS.syncQueue, normalized);
   return normalized;
 }
@@ -326,6 +401,7 @@ export function resetStorageForTests() {
     migrationStatus: "pending",
     error: ""
   };
+  activeContext = null;
 }
 
 function loadLegacyAppState() {
@@ -409,7 +485,9 @@ function normalizeQueueEntry(entry) {
     createdAt: entry.createdAt || now,
     updatedAt: entry.updatedAt || entry.createdAt || now,
     lastError: String(entry.lastError || ""),
-    nextRetryAt: entry.nextRetryAt || ""
+    nextRetryAt: entry.nextRetryAt || "",
+    userId: entry.userId || "",
+    organizationId: entry.organizationId || ""
   };
 }
 
@@ -437,4 +515,34 @@ function getStorage() {
 function createQueueId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return `queue-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function currentScopeKey() {
+  return activeContext?.userId
+    ? `user:${activeContext.userId}:org:${activeContext.organizationId || "none"}`
+    : "current";
+}
+
+function hasScope(entry) {
+  return Boolean(entry?.organizationId && entry?.localOwnerUserId);
+}
+
+function applyScope(requisition, context) {
+  if (!context) return requisition;
+  return {
+    ...requisition,
+    requestedBy: requisition.requestedBy || context.displayName,
+    organizationId: requisition.organizationId || context.organizationId,
+    locationId: requisition.locationId || context.locationId,
+    departmentId: requisition.departmentId || context.departmentId,
+    destinationDepartmentId: requisition.destinationDepartmentId || "",
+    requestedByUserId: requisition.requestedByUserId || context.userId,
+    localOwnerUserId: requisition.localOwnerUserId || context.userId,
+    revisionNumber: Math.max(1, Number(requisition.revisionNumber) || 1)
+  };
+}
+
+function queueMatchesContext(entry) {
+  if (!activeContext) return true;
+  return entry.userId === activeContext.userId && entry.organizationId === activeContext.organizationId;
 }

@@ -2,6 +2,13 @@ import { normalizeRequisition } from "./requisitions.js?v=2.0.0-beta.2";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
+let activeSession = null;
+let activeContext = null;
+
+export function setSupabaseSessionContext(session, context) {
+  activeSession = session || null;
+  activeContext = context || null;
+}
 
 export function normalizeSupabaseUrl(value) {
   const raw = String(value || "").trim();
@@ -70,7 +77,9 @@ export async function testSupabase(settings) {
 export async function syncRequisitionToSupabase(settings, requisition, catalog) {
   if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
   const workspaceId = settings.workspaceId || "main";
-  await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
+  if (activeContext?.permissions?.includes("catalog.manage")) {
+    await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
+  }
   const rename = await upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId);
   await supabaseRequest(settings, "requisition_items", {
     method: "DELETE",
@@ -95,7 +104,9 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog) 
 export async function syncAllToSupabase(settings, requisitions, catalog) {
   if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
   const workspaceId = settings.workspaceId || "main";
-  await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
+  if (activeContext?.permissions?.includes("catalog.manage")) {
+    await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
+  }
   const renames = [];
   for (const requisition of requisitions) {
     const result = await syncRequisitionToSupabase(settings, requisition, []);
@@ -106,11 +117,11 @@ export async function syncAllToSupabase(settings, requisitions, catalog) {
 
 export async function fetchRequisitionsFromSupabase(settings) {
   if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
-  const workspaceId = settings.workspaceId || "main";
+  if (!activeContext?.organizationId) throw new Error("Falta el contexto de organización.");
   const requisitions = await supabaseRequest(settings, "requisitions", {
     query: [
       "select=*",
-      `workspace_id=eq.${encodeURIComponent(workspaceId)}`,
+      `organization_id=eq.${encodeURIComponent(activeContext.organizationId)}`,
       "order=updated_at.desc",
       "limit=500"
     ].join("&")
@@ -131,7 +142,7 @@ export async function fetchRequisitionsFromSupabase(settings) {
     supabaseRequest(settings, "requisition_changes", {
       query: [
         "select=*",
-        `workspace_id=eq.${encodeURIComponent(workspaceId)}`,
+        `organization_id=eq.${encodeURIComponent(activeContext.organizationId)}`,
         "order=changed_at.desc",
         "limit=5000"
       ].join("&")
@@ -200,7 +211,7 @@ async function findRequisitionNumberOwner(settings, workspaceId, requisitionNumb
   const rows = await supabaseRequest(settings, "requisitions", {
     query: [
       "select=id,requisition_number",
-      `workspace_id=eq.${encodeURIComponent(workspaceId)}`,
+      `organization_id=eq.${encodeURIComponent(activeContext?.organizationId || "")}`,
       `requisition_number=eq.${encodeURIComponent(requisitionNumber)}`,
       "limit=1"
     ].join("&")
@@ -270,9 +281,16 @@ export async function supabaseRequest(settings, table, options = {}) {
   }
 
   const url = `${projectUrl}${REST_PATH}/${table}${query ? `?${query}` : ""}`;
+  const accessToken = activeSession?.access_token;
+  if (!accessToken) {
+    const error = new Error("Su sesión venció. Inicie sesión nuevamente.");
+    error.status = 401;
+    error.code = "session_missing";
+    throw error;
+  }
   const headers = {
     apikey: settings.publishableKey,
-    Authorization: `Bearer ${settings.publishableKey}`,
+    Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
     Accept: "application/json"
   };
@@ -306,8 +324,8 @@ export function classifySupabaseError(error) {
   }
   if (error.status === 401) {
     return {
-      label: "Error de autenticación",
-      message: "La publishable key no fue aceptada.",
+      label: "Sesión vencida",
+      message: "Inicie sesión nuevamente para sincronizar.",
       technical: error.technical || error.message || ""
     };
   }
@@ -329,6 +347,8 @@ function productToRow(product, workspaceId) {
   return {
     id: product.id,
     workspace_id: workspaceId,
+    organization_id: product.organizationId || activeContext?.organizationId,
+    location_id: product.locationId || null,
     code: product.code,
     official_name: product.officialName,
     category: product.category,
@@ -344,6 +364,12 @@ function requisitionToRow(requisition, workspaceId) {
   return {
     id: requisition.id,
     workspace_id: workspaceId,
+    organization_id: requisition.organizationId || activeContext?.organizationId,
+    location_id: requisition.locationId || activeContext?.locationId,
+    department_id: requisition.departmentId || activeContext?.departmentId,
+    destination_department_id: requisition.destinationDepartmentId || null,
+    requested_by_user_id: requisition.requestedByUserId || activeContext?.userId,
+    revision_number: Math.max(1, Number(requisition.revisionNumber) || 1),
     requisition_number: requisition.requisitionNumber,
     requested_by: requisition.requestedBy,
     status: requisition.status,
@@ -378,12 +404,14 @@ function changeToRow(change, requisitionId, workspaceId) {
   return {
     id: change.id,
     workspace_id: workspaceId,
+    organization_id: activeContext?.organizationId,
     requisition_id: requisitionId,
     action: change.action,
     previous_value: change.previousValue || null,
     new_value: change.newValue || null,
     changed_at: change.changedAt,
-    changed_by: change.changedBy || ""
+    changed_by: change.changedBy || activeContext?.displayName || "",
+    changed_by_user_id: change.changedByUserId || activeContext?.userId
   };
 }
 

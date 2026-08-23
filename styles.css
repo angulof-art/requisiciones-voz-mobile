@@ -40,6 +40,33 @@ body.text-large {
   font-size: 18px;
 }
 
+.auth-shell {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 1rem;
+}
+
+.login-panel {
+  width: min(100%, 420px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1.2rem;
+  background: var(--surface);
+  box-shadow: 0 14px 36px rgba(23, 33, 31, 0.1);
+}
+
+.login-panel form {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.login-copy {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
 button,
 input,
 select,
@@ -158,6 +185,37 @@ h2 {
   padding: 0.65rem 0.8rem;
   border-bottom: 1px solid var(--line);
   background: rgba(243, 246, 245, 0.96);
+}
+
+.identity-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.identity-button {
+  display: grid;
+  min-height: 42px;
+  max-width: 190px;
+  gap: 0.05rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+}
+
+.identity-button strong,
+.identity-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-button span {
+  color: var(--muted);
+  font-size: 0.7rem;
 }
 
 .eyebrow {
@@ -759,7 +817,7 @@ h2 {
   bottom: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
   width: min(100%, 760px);
   padding: 0.35rem 0.45rem calc(0.35rem + env(safe-area-inset-bottom));
   transform: translateX(-50%);

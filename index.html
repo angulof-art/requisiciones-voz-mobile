@@ -11,13 +11,34 @@
     <link rel="stylesheet" href="./styles.css?v=2.0.0-beta.2" />
   </head>
   <body>
-    <div class="app-shell">
+    <main class="auth-shell" id="authGate">
+      <section class="login-panel" aria-labelledby="loginTitle">
+        <p class="eyebrow">Pedidos por voz</p>
+        <h1 id="loginTitle">Iniciar sesión</h1>
+        <p class="login-copy">Use su cuenta asignada para acceder a los pedidos de su sede.</p>
+        <form id="loginForm">
+          <label>Correo electrónico <input id="loginEmail" type="email" autocomplete="username" required /></label>
+          <label>Contraseña <input id="loginPassword" type="password" autocomplete="current-password" required /></label>
+          <button id="loginButton" type="submit">Ingresar</button>
+          <p class="field-error" id="loginError" role="alert"></p>
+        </form>
+        <p class="hint" id="authStatus">Comprobando sesión guardada…</p>
+      </section>
+    </main>
+
+    <div class="app-shell" id="appShell" hidden>
       <header class="topbar">
         <div>
           <p class="eyebrow">Pedidos por voz</p>
           <h1 id="screenTitle">Nuevo pedido</h1>
         </div>
-        <button class="status-pill" id="connectionBadge" type="button">Conectando</button>
+        <div class="identity-actions">
+          <button class="identity-button" id="profileButton" type="button">
+            <strong id="identityName">Usuario</strong>
+            <span id="identityContext">Sede · Departamento</span>
+          </button>
+          <button class="status-pill" id="connectionBadge" type="button">Conectando</button>
+        </div>
       </header>
 
       <main>
@@ -42,7 +63,7 @@
 
           <div class="responsible-block compact-block">
             <label for="requestedBy">Responsable del pedido</label>
-            <input id="requestedBy" list="recentNames" autocomplete="name" placeholder="Nombre y apellido" />
+            <input id="requestedBy" list="recentNames" autocomplete="name" placeholder="Nombre y apellido" readonly />
             <datalist id="recentNames"></datalist>
             <p class="field-error" id="responsibleError"></p>
           </div>
@@ -246,18 +267,62 @@
           </div>
           <div class="history-list" id="syncQueueList"></div>
         </section>
+
+        <section class="screen" id="screen-profile" data-screen="profile" aria-labelledby="profileTitle">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Cuenta</p><h2 id="profileTitle">Mi perfil</h2></div>
+            <button class="secondary" id="logoutButton" type="button">Cerrar sesión</button>
+          </div>
+          <div class="settings-card">
+            <label>Nombre <input id="profileName" readonly /></label>
+            <label>Correo <input id="profileEmail" readonly /></label>
+            <label>Organización <select id="profileOrganization"></select></label>
+            <label>Sede <select id="profileLocation"></select></label>
+            <label>Departamento <select id="profileDepartment"></select></label>
+            <button id="saveContextButton" type="button">Usar esta operación</button>
+            <p class="hint" id="profileRoles"></p>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-admin" data-screen="admin" aria-labelledby="adminTitle">
+          <div class="panel-heading"><div><p class="eyebrow">Administración</p><h2 id="adminTitle">Organización y accesos</h2></div></div>
+          <div class="settings-card">
+            <h3>Sede nueva</h3>
+            <div class="form-grid">
+              <label>Nombre <input id="adminLocationName" /></label>
+              <label>Código <input id="adminLocationCode" maxlength="20" /></label>
+            </div>
+            <button id="addLocationButton" type="button">Agregar sede</button>
+          </div>
+          <div class="settings-card">
+            <h3>Departamento nuevo</h3>
+            <div class="form-grid">
+              <label>Nombre <input id="adminDepartmentName" /></label>
+              <label>Código <input id="adminDepartmentCode" maxlength="30" /></label>
+            </div>
+            <button id="addDepartmentButton" type="button">Agregar departamento</button>
+          </div>
+          <div class="settings-card">
+            <h3>Usuarios y roles</h3>
+            <div id="adminMembers" class="history-list"></div>
+            <p class="hint">Las cuentas nuevas se crean mediante el procedimiento seguro de administración; aquí se revisan las membresías existentes.</p>
+          </div>
+        </section>
       </main>
 
       <nav class="bottom-nav" aria-label="Navegación principal">
         <button class="active" data-target="new" type="button">Pedido</button>
         <button data-target="history" type="button">Historial</button>
         <button data-target="catalog" type="button">Catálogo</button>
-        <button data-target="config" type="button">Config</button>
+        <button data-target="profile" type="button">Perfil</button>
+        <button data-target="config" data-permission="config.technical" type="button">Config</button>
+        <button data-target="admin" data-role="administrator" type="button">Admin</button>
       </nav>
 
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </div>
 
+    <script src="./vendor/supabase.js?v=2.0.0-beta.2"></script>
     <script type="module" src="./src/app.js?v=2.0.0-beta.2"></script>
   </body>
 </html>

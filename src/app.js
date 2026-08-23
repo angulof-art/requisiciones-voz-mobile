@@ -41,17 +41,38 @@ import {
   upsertRequisition
 } from "./storage.js?v=2.0.0-beta.2";
 import {
+  claimLegacyLocalData,
+  initializeStorage,
+  loadCachedAuthContext,
+  saveCachedAuthContext,
+  setStorageContext
+} from "./storage.js?v=2.0.0-beta.2";
+import {
   classifySupabaseError,
   fetchRequisitionsFromSupabase,
   isSupabaseReady,
   normalizeSupabaseUrl,
+  setSupabaseSessionContext,
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
 } from "./supabase.js?v=2.0.0-beta.2";
+import { getSupabaseClient } from "./auth/client.js?v=2.0.0-beta.2";
+import { loadUserContext, selectActiveContext } from "./auth/context.js?v=2.0.0-beta.2";
+import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-beta.2";
+import {
+  onAuthStateChange,
+  restoreSession,
+  signInWithPassword,
+  signOut
+} from "./auth/session.js?v=2.0.0-beta.2";
 import { APP_VERSION } from "./version.js?v=2.0.0-beta.2";
 
 let state = null;
+let appSession = null;
+let userContext = null;
+let eventsBound = false;
+let authSubscription = null;
 const undoStack = [];
 let recognition = null;
 let isListening = false;
@@ -74,12 +95,23 @@ let serviceWorkerReloading = false;
 let localSaveChain = Promise.resolve();
 
 const els = {
+  authGate: document.querySelector("#authGate"),
+  appShell: document.querySelector("#appShell"),
+  loginForm: document.querySelector("#loginForm"),
+  loginEmail: document.querySelector("#loginEmail"),
+  loginPassword: document.querySelector("#loginPassword"),
+  loginButton: document.querySelector("#loginButton"),
+  loginError: document.querySelector("#loginError"),
+  authStatus: document.querySelector("#authStatus"),
   screenTitle: document.querySelector("#screenTitle"),
   connectionBadge: document.querySelector("#connectionBadge"),
   updateBanner: document.querySelector("#updateBanner"),
   updateAppButton: document.querySelector("#updateAppButton"),
   screens: document.querySelectorAll(".screen"),
   navButtons: document.querySelectorAll(".bottom-nav button"),
+  profileButton: document.querySelector("#profileButton"),
+  identityName: document.querySelector("#identityName"),
+  identityContext: document.querySelector("#identityContext"),
   requestedBy: document.querySelector("#requestedBy"),
   responsibleError: document.querySelector("#responsibleError"),
   recentNames: document.querySelector("#recentNames"),
@@ -150,6 +182,21 @@ const els = {
   pendingCount: document.querySelector("#pendingCount"),
   lastSync: document.querySelector("#lastSync"),
   syncQueueList: document.querySelector("#syncQueueList"),
+  logoutButton: document.querySelector("#logoutButton"),
+  profileName: document.querySelector("#profileName"),
+  profileEmail: document.querySelector("#profileEmail"),
+  profileOrganization: document.querySelector("#profileOrganization"),
+  profileLocation: document.querySelector("#profileLocation"),
+  profileDepartment: document.querySelector("#profileDepartment"),
+  profileRoles: document.querySelector("#profileRoles"),
+  saveContextButton: document.querySelector("#saveContextButton"),
+  adminLocationName: document.querySelector("#adminLocationName"),
+  adminLocationCode: document.querySelector("#adminLocationCode"),
+  addLocationButton: document.querySelector("#addLocationButton"),
+  adminDepartmentName: document.querySelector("#adminDepartmentName"),
+  adminDepartmentCode: document.querySelector("#adminDepartmentCode"),
+  addDepartmentButton: document.querySelector("#addDepartmentButton"),
+  adminMembers: document.querySelector("#adminMembers"),
   toast: document.querySelector("#toast")
 };
 
@@ -161,18 +208,88 @@ async function boot() {
   populateUnitSelects();
   setupSpeechRecognition();
   try {
-    state = await loadAppState();
+    await initializeStorage();
+    appSession = await restoreSession();
   } catch (error) {
-    showFatalStorageError(error);
+    showLogin(error.message);
     return;
   }
-  bindEvents();
-  applySettingsToForm();
-  render();
-  setLocalSaveState("saved");
-  renderStorageStatus();
+  bindAuthEvents();
   registerServiceWorker();
-  verifySupabaseConnection();
+  if (appSession) await activateSession(appSession);
+  else showLogin();
+}
+
+function bindAuthEvents() {
+  els.loginForm.addEventListener("submit", handleLogin);
+  authSubscription = onAuthStateChange((event, session) => {
+    if (event === "TOKEN_REFRESHED" && session && userContext) {
+      appSession = session;
+      setSupabaseSessionContext(session, userContext);
+    }
+    if (event === "SIGNED_OUT") showLogin();
+  });
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  els.loginError.textContent = "";
+  els.loginButton.disabled = true;
+  els.authStatus.textContent = "Validando cuenta…";
+  try {
+    const session = await signInWithPassword(els.loginEmail.value, els.loginPassword.value);
+    await activateSession(session);
+    els.loginPassword.value = "";
+  } catch (error) {
+    showLogin(error.message);
+  } finally {
+    els.loginButton.disabled = false;
+  }
+}
+
+async function activateSession(session) {
+  try {
+    const cachedContext = await loadCachedAuthContext(session.user.id);
+    const context = await loadUserContext(session, cachedContext);
+    appSession = session;
+    userContext = context;
+    await saveCachedAuthContext(context);
+    setStorageContext(context);
+    setSupabaseSessionContext(session, context);
+    await claimLegacyLocalData(context);
+    state = await loadAppState();
+    state.current.requestedBy = state.current.requestedBy || context.displayName;
+    state.current.requestedByUserId = state.current.requestedByUserId || context.userId;
+    if (!eventsBound) {
+      bindEvents();
+      eventsBound = true;
+    }
+    applySettingsToForm();
+    applyAccessControls();
+    render();
+    renderUserContext();
+    setLocalSaveState("saved");
+    renderStorageStatus();
+    els.authGate.hidden = true;
+    els.appShell.hidden = false;
+    verifySupabaseConnection();
+  } catch (error) {
+    showLogin(error.message);
+  }
+}
+
+function showLogin(message = "") {
+  appSession = null;
+  userContext = null;
+  state = null;
+  setStorageContext(null);
+  setSupabaseSessionContext(null, null);
+  els.appShell.hidden = true;
+  els.authGate.hidden = false;
+  els.loginError.textContent = message;
+  els.authStatus.textContent = navigator.onLine
+    ? "Ingrese con su cuenta asignada."
+    : "Sin conexión. Solo puede entrar con una sesión válida guardada.";
 }
 
 function bindEvents() {
@@ -230,6 +347,12 @@ function bindEvents() {
   els.downloadSupabaseButton.addEventListener("click", downloadCloudToLocal);
   els.updateAppButton.addEventListener("click", applyAppUpdate);
   els.installAppButton.addEventListener("click", installApp);
+  els.profileButton.addEventListener("click", () => navigate("profile"));
+  els.logoutButton.addEventListener("click", handleLogout);
+  els.saveContextButton.addEventListener("click", saveActiveContext);
+  els.profileLocation.addEventListener("change", renderDepartmentSelector);
+  els.addLocationButton.addEventListener("click", addAdminLocation);
+  els.addDepartmentButton.addEventListener("click", addAdminDepartment);
 
   window.addEventListener("online", () => {
     supabaseConnectionState = "checking";
@@ -250,12 +373,168 @@ function navigate(target) {
     history: "Historial",
     catalog: "Catálogo",
     config: "Configuración",
-    sync: "Estado"
+    sync: "Estado",
+    profile: "Mi perfil",
+    admin: "Administración"
   };
   els.screenTitle.textContent = titles[target] || "Pedidos por Voz";
   if (target === "history") renderHistory();
   if (target === "catalog") renderCatalog();
   if (target === "sync") renderSync();
+  if (target === "profile") renderUserContext();
+  if (target === "admin") renderAdmin();
+}
+
+function applyAccessControls() {
+  document.querySelectorAll("[data-permission]").forEach((element) => {
+    element.hidden = !hasPermission(userContext, element.dataset.permission);
+  });
+  document.querySelectorAll("[data-role]").forEach((element) => {
+    element.hidden = !hasRole(userContext, element.dataset.role);
+  });
+  const catalogNav = document.querySelector('.bottom-nav [data-target="catalog"]');
+  if (catalogNav) catalogNav.hidden = !hasPermission(userContext, PERMISSIONS.manageCatalog);
+  els.catalogForm.hidden = !hasPermission(userContext, PERMISSIONS.manageCatalog);
+  els.catalogImport.closest(".file-button").hidden = !hasPermission(userContext, PERMISSIONS.manageCatalog);
+}
+
+function renderUserContext() {
+  if (!userContext) return;
+  els.identityName.textContent = userContext.displayName;
+  els.identityContext.textContent = `${userContext.location.name} · ${userContext.department.name}`;
+  els.profileName.value = userContext.displayName;
+  els.profileEmail.value = userContext.email;
+  els.profileRoles.textContent = `Roles: ${userContext.roles.join(", ") || "sin rol"}`;
+  els.profileOrganization.innerHTML = userContext.organizations
+    .map((organization) => `<option value="${escapeHtml(organization.id)}" ${organization.id === userContext.organizationId ? "selected" : ""}>${escapeHtml(organization.name)}</option>`)
+    .join("");
+  els.profileLocation.innerHTML = userContext.locations
+    .filter((location) => location.organization_id === userContext.organizationId)
+    .map((location) => `<option value="${escapeHtml(location.id)}" ${location.id === userContext.locationId ? "selected" : ""}>${escapeHtml(location.name)}</option>`)
+    .join("");
+  renderDepartmentSelector();
+}
+
+function renderDepartmentSelector() {
+  if (!userContext) return;
+  const locationId = els.profileLocation.value || userContext.locationId;
+  els.profileDepartment.innerHTML = userContext.departments
+    .filter((department) => department.location_id === locationId)
+    .map((department) => `<option value="${escapeHtml(department.id)}" ${department.id === userContext.departmentId ? "selected" : ""}>${escapeHtml(department.name)}</option>`)
+    .join("");
+}
+
+async function saveActiveContext() {
+  try {
+    const preferred = {
+      organizationId: els.profileOrganization.value,
+      locationId: els.profileLocation.value,
+      departmentId: els.profileDepartment.value
+    };
+    const refreshed = navigator.onLine
+      ? await loadUserContext(appSession, preferred)
+      : selectActiveContext(userContext, preferred);
+    userContext = refreshed;
+    await saveCachedAuthContext(refreshed);
+    setStorageContext(refreshed);
+    setSupabaseSessionContext(appSession, refreshed);
+    state = await loadAppState();
+    state.current.requestedBy = state.current.requestedBy || refreshed.displayName;
+    applyAccessControls();
+    render();
+    renderUserContext();
+    navigate("new");
+    verifySupabaseConnection();
+    toast("Operación activa actualizada.");
+  } catch (error) {
+    toast(error.message || "No se pudo cambiar la operación activa.");
+  }
+}
+
+async function handleLogout() {
+  const pending = state?.syncQueue?.filter((entry) => entry.status !== "synced").length || 0;
+  if (pending && !window.confirm(`Hay ${pending} cambio(s) pendiente(s) de sincronizar. Se conservarán en este dispositivo. ¿Cerrar sesión?`)) return;
+  try {
+    await signOut();
+    showLogin();
+  } catch (error) {
+    toast(error.message || "No se pudo cerrar la sesión.");
+  }
+}
+
+async function addAdminLocation() {
+  const name = els.adminLocationName.value.trim();
+  const code = normalizeAdminCode(els.adminLocationCode.value);
+  if (!name || !code) return toast("Ingrese nombre y código para la sede.");
+  const { error } = await getSupabaseClient().from("locations").insert({
+    organization_id: userContext.organizationId,
+    name,
+    code,
+    timezone: "America/Costa_Rica"
+  });
+  if (error) return toast(`No se pudo crear la sede: ${error.message}`);
+  els.adminLocationName.value = "";
+  els.adminLocationCode.value = "";
+  await reloadContextAfterAdminChange();
+  toast("Sede creada.");
+}
+
+async function addAdminDepartment() {
+  const name = els.adminDepartmentName.value.trim();
+  const code = normalizeAdminCode(els.adminDepartmentCode.value);
+  if (!name || !code) return toast("Ingrese nombre y código para el departamento.");
+  const { error } = await getSupabaseClient().from("departments").insert({
+    organization_id: userContext.organizationId,
+    location_id: userContext.locationId,
+    name,
+    code
+  });
+  if (error) return toast(`No se pudo crear el departamento: ${error.message}`);
+  els.adminDepartmentName.value = "";
+  els.adminDepartmentCode.value = "";
+  await reloadContextAfterAdminChange();
+  toast("Departamento creado.");
+}
+
+async function reloadContextAfterAdminChange() {
+  const refreshed = await loadUserContext(appSession, userContext);
+  userContext = refreshed;
+  await saveCachedAuthContext(refreshed);
+  setStorageContext(refreshed);
+  setSupabaseSessionContext(appSession, refreshed);
+  renderUserContext();
+  renderAdmin();
+}
+
+async function renderAdmin() {
+  if (!userContext || !hasRole(userContext, "administrator")) return;
+  els.adminMembers.innerHTML = "<p class=\"hint\">Cargando usuarios…</p>";
+  const client = getSupabaseClient();
+  const { data: memberships, error } = await client
+    .from("organization_memberships")
+    .select("id,user_id,active")
+    .eq("organization_id", userContext.organizationId)
+    .order("created_at");
+  if (error) {
+    els.adminMembers.textContent = "No se pudieron cargar los usuarios.";
+    return;
+  }
+  const userIds = memberships.map((entry) => entry.user_id);
+  const [profilesResult, rolesResult] = await Promise.all([
+    userIds.length ? client.from("profiles").select("id,display_name,active").in("id", userIds) : Promise.resolve({ data: [] }),
+    client.from("membership_roles").select("user_id,role_code").eq("organization_id", userContext.organizationId)
+  ]);
+  const profiles = profilesResult.data || [];
+  const roles = rolesResult.data || [];
+  els.adminMembers.innerHTML = memberships.map((membership) => {
+    const profile = profiles.find((entry) => entry.id === membership.user_id);
+    const roleText = roles.filter((entry) => entry.user_id === membership.user_id).map((entry) => entry.role_code).join(", ");
+    return `<article class="history-card"><strong>${escapeHtml(profile?.display_name || membership.user_id)}</strong><span>${escapeHtml(roleText || "sin rol")}</span><span>${membership.active && profile?.active !== false ? "Activo" : "Inactivo"}</span></article>`;
+  }).join("") || "<p class=\"hint\">No hay membresías.</p>";
+}
+
+function normalizeAdminCode(value) {
+  return String(value || "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 function processTranscript(textOverride = null) {
@@ -585,6 +864,8 @@ async function startNewOrder() {
     const previousWasSaved = await preserveCurrentOrder();
     await clearCurrentRequisition();
     state.current = createRequisition(state.requisitions);
+    state.current.requestedBy = userContext.displayName;
+    state.current.requestedByUserId = userContext.userId;
     undoStack.length = 0;
     replaceIndex = null;
     els.transcriptInput.value = "";
@@ -593,7 +874,7 @@ async function startNewOrder() {
     setLocalSaveState("saved");
     render();
     navigate("new");
-    els.requestedBy.focus();
+    els.voiceButton.focus();
     if (previousWasSaved) scheduleAutoSync();
     toast(
       previousWasSaved

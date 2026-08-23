@@ -9,6 +9,10 @@ const required = [
   "service-worker.js",
   "manifest.webmanifest",
   "src/app.js",
+  "src/auth/client.js",
+  "src/auth/context.js",
+  "src/auth/permissions.js",
+  "src/auth/session.js",
   "src/version.js",
   "src/config.js",
   "src/parser.js",
@@ -20,6 +24,7 @@ const required = [
   "src/storage.js",
   "src/exporters.js",
   "src/supabase.js",
+  "vendor/supabase.js",
   "supabase/migrations/202608030001_requisitions.sql",
   "supabase/migrations/202608040003_seed_master_catalog.sql",
   "data/catalogo-productos-maestro.csv",
@@ -49,6 +54,9 @@ assert.ok(index.includes("Dicte los productos"));
 assert.ok(index.includes("Agregar texto"));
 assert.equal(index.includes("Revisar pedido"), false);
 assert.ok(index.includes("Responsable del pedido"));
+assert.ok(index.includes("Iniciar sesión"));
+assert.ok(index.includes("Mi perfil"));
+assert.ok(index.includes("Organización y accesos"));
 assert.ok(app.includes("SpeechRecognition") && app.includes("es-CR"));
 assert.ok(app.includes("describeSpeechError"));
 assert.ok(app.includes("recognition.continuous = true"));
@@ -88,6 +96,9 @@ assert.ok(app.includes("registration.waiting"));
 assert.ok(sw.includes("catalog-data.js"));
 assert.ok(sw.includes("db/indexeddb.js"));
 assert.ok(sw.includes("db/migrate-v10.js"));
+assert.ok(sw.includes("vendor/supabase.js"));
+assert.ok(app.includes("restoreSession"));
+assert.ok(app.includes("setStorageContext"));
 assert.ok(index.includes("Almacenamiento local"));
 assert.ok(app.includes("Error al guardar"));
 assert.ok(sql.includes("enable row level security"));

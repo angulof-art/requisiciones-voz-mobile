@@ -10,7 +10,9 @@ import {
   markSyncQueueFailed,
   queueSyncChange,
   resetStorageForTests,
-  saveCurrentRequisition
+  saveCurrentRequisition,
+  setStorageContext,
+  upsertRequisition
 } from "../src/storage.js";
 
 await testNormalAndRepeatedMigration();
@@ -19,6 +21,7 @@ await testPartiallyCorruptData();
 await testInterruptedMigration();
 await testReopenAndLargeVolumes();
 await testQueueDedupeAndBackoff();
+await testUserAndOrganizationIsolation();
 await testCompatibilityFallbackAndWriteError();
 
 console.log("IndexedDB migration smoke OK");
@@ -194,6 +197,55 @@ async function testQueueDedupeAndBackoff() {
   assert.equal(delay, 60_000);
   delete globalThis.localStorage;
   resetStorageForTests();
+}
+
+async function testUserAndOrganizationIsolation() {
+  const storage = createMemoryStorage();
+  globalThis.localStorage = storage;
+  resetStorageForTests();
+  await initializeStorage({
+    indexedDBFactory: indexedDB,
+    dbName: uniqueDbName("user-isolation"),
+    storage
+  });
+  const contextA = makeContext("user-a", "org-a");
+  const contextB = makeContext("user-b", "org-b");
+  setStorageContext(contextA);
+  const requisitionA = makeRequisition(7000);
+  requisitionA.requestedByUserId = contextA.userId;
+  requisitionA.organizationId = contextA.organizationId;
+  requisitionA.locationId = contextA.locationId;
+  requisitionA.departmentId = contextA.departmentId;
+  await upsertRequisition(requisitionA, []);
+  await saveCurrentRequisition(requisitionA);
+  await queueSyncChange("requisition", { id: requisitionA.id }, []);
+
+  setStorageContext(contextB);
+  const stateB = await loadAppState();
+  assert.equal(stateB.requisitions.length, 0);
+  assert.equal(stateB.syncQueue.length, 0);
+  assert.notEqual(stateB.current.id, requisitionA.id);
+
+  setStorageContext(contextA);
+  const stateA = await loadAppState();
+  assert.equal(stateA.requisitions.length, 1);
+  assert.equal(stateA.syncQueue.length, 1);
+  assert.equal(stateA.current.id, requisitionA.id);
+  delete globalThis.localStorage;
+  resetStorageForTests();
+}
+
+function makeContext(userId, organizationId) {
+  return {
+    userId,
+    organizationId,
+    locationId: `${organizationId}-location`,
+    departmentId: `${organizationId}-department`,
+    departmentIds: [`${organizationId}-department`],
+    displayName: userId,
+    roles: ["requester"],
+    permissions: ["requisitions.create", "requisitions.read", "requisitions.update"]
+  };
 }
 
 function seedLegacy(storage, requisitionCount, productCount) {

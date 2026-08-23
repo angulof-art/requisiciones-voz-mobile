@@ -21,9 +21,20 @@ import { loadCatalog, loadSettings, STORAGE_KEYS } from "../src/storage.js";
 import {
   fetchRequisitionsFromSupabase,
   makeConflictSafeRequisitionNumber,
+  setSupabaseSessionContext,
   syncAllToSupabase,
   syncRequisitionToSupabase
 } from "../src/supabase.js";
+
+const authContext = {
+  userId: "00000000-0000-4000-8000-000000000001",
+  displayName: "Usuario QA",
+  organizationId: "00000000-0000-4000-8000-000000000010",
+  locationId: "00000000-0000-4000-8000-000000000020",
+  departmentId: "00000000-0000-4000-8000-000000000030",
+  permissions: ["catalog.manage", "requisitions.create", "requisitions.read", "requisitions.update"]
+};
+setSupabaseSessionContext({ access_token: "authenticated-user-token" }, authContext);
 
 const catalog = normalizeCatalog(DEFAULT_CATALOG);
 assert.equal(catalog.length, 327);
@@ -180,6 +191,7 @@ assert.ok(
       String(request.options.body).includes(conflictRequisition.requisitionNumber)
   )
 );
+assert.ok(requests.every((request) => request.options.headers.Authorization === "Bearer authenticated-user-token"));
 
 const batchRequests = [];
 globalThis.fetch = async (url, options = {}) => {
@@ -255,5 +267,8 @@ assert.equal(downloadedHistory.length, 1);
 assert.equal(downloadedHistory[0].requestedBy, "Chef nube");
 assert.equal(downloadedHistory[0].items[0].productName, "Tomate");
 assert.equal(downloadedHistory[0].syncStatus, "synced");
+assert.ok(requests.every((request) => request.options.headers.Authorization !== "Bearer sb_publishable_test"));
+
+setSupabaseSessionContext(null, null);
 
 console.log("Integration smoke OK");

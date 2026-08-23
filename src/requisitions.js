@@ -16,6 +16,13 @@ export function createRequisition(existing = [], now = new Date()) {
     id: createId("req"),
     requisitionNumber: generateRequisitionNumber(existing, now),
     requestedBy: "",
+    requestedByUserId: "",
+    organizationId: "",
+    locationId: "",
+    departmentId: "",
+    destinationDepartmentId: "",
+    localOwnerUserId: "",
+    revisionNumber: 1,
     status: "draft",
     originalTranscript: "",
     items: [],
@@ -47,6 +54,14 @@ export function normalizeRequisition(requisition) {
     id: requisition.id || createId("req"),
     requisitionNumber: requisition.requisitionNumber || requisition.requisition_number || "REQ",
     requestedBy: String(requisition.requestedBy || requisition.requested_by || "").trim(),
+    requestedByUserId: requisition.requestedByUserId || requisition.requested_by_user_id || "",
+    organizationId: requisition.organizationId || requisition.organization_id || "",
+    locationId: requisition.locationId || requisition.location_id || "",
+    departmentId: requisition.departmentId || requisition.department_id || "",
+    destinationDepartmentId:
+      requisition.destinationDepartmentId || requisition.destination_department_id || "",
+    localOwnerUserId: requisition.localOwnerUserId || "",
+    revisionNumber: Math.max(1, Number(requisition.revisionNumber || requisition.revision_number) || 1),
     status: requisition.status || "draft",
     originalTranscript: requisition.originalTranscript || requisition.original_transcript || "",
     items: (requisition.items || []).map(normalizeItem),
@@ -118,7 +133,8 @@ export function addChange(requisition, action, previousValue, newValue) {
     previousValue: compactChangeValue(previousValue),
     newValue: compactChangeValue(newValue),
     changedAt: new Date().toISOString(),
-    changedBy: requisition.requestedBy || ""
+    changedBy: requisition.requestedBy || "",
+    changedByUserId: requisition.requestedByUserId || ""
   });
   requisition.changes = requisition.changes.slice(0, 100);
   requisition.updatedAt = new Date().toISOString();
@@ -252,7 +268,8 @@ function normalizeChanges(changes) {
     previousValue: compactChangeValue(change.previousValue ?? change.previous_value),
     newValue: compactChangeValue(change.newValue ?? change.new_value),
     changedAt: change.changedAt || change.changed_at || new Date().toISOString(),
-    changedBy: change.changedBy || change.changed_by || ""
+    changedBy: change.changedBy || change.changed_by || "",
+    changedByUserId: change.changedByUserId || change.changed_by_user_id || ""
   }));
 }
 

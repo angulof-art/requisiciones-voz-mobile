@@ -1,5 +1,5 @@
 export const DB_NAME = "pedidos-voz-db";
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export const STORES = Object.freeze({
   requisitions: "requisitions",
@@ -8,7 +8,8 @@ export const STORES = Object.freeze({
   settings: "settings",
   recentNames: "recent_names",
   syncQueue: "sync_queue",
-  metadata: "metadata"
+  metadata: "metadata",
+  authContexts: "auth_contexts"
 });
 
 const CURRENT_KEY = "current";
@@ -139,18 +140,18 @@ export class IndexedDbRepository {
     await this.delete(STORES.requisitions, id);
   }
 
-  async getCurrentRequisition() {
-    return (await this.get(STORES.currentRequisition, CURRENT_KEY))?.value || null;
+  async getCurrentRequisition(scopeKey = CURRENT_KEY) {
+    return (await this.get(STORES.currentRequisition, scopeKey))?.value || null;
   }
 
-  async saveCurrentRequisition(requisition) {
+  async saveCurrentRequisition(requisition, scopeKey = CURRENT_KEY) {
     requireId(requisition, "pedido actual");
-    await this.put(STORES.currentRequisition, { key: CURRENT_KEY, value: requisition });
+    await this.put(STORES.currentRequisition, { key: scopeKey, value: requisition });
     return requisition;
   }
 
-  async clearCurrentRequisition() {
-    await this.delete(STORES.currentRequisition, CURRENT_KEY);
+  async clearCurrentRequisition(scopeKey = CURRENT_KEY) {
+    await this.delete(STORES.currentRequisition, scopeKey);
   }
 
   async getCatalog() {
@@ -203,6 +204,16 @@ export class IndexedDbRepository {
   async setMetadata(key, value) {
     await this.put(STORES.metadata, { key, value, updatedAt: new Date().toISOString() });
     return value;
+  }
+
+  async getAuthContext(userId) {
+    return this.get(STORES.authContexts, userId);
+  }
+
+  async saveAuthContext(context) {
+    requireId({ id: context?.userId }, "contexto de usuario");
+    await this.put(STORES.authContexts, { ...context, userId: context.userId });
+    return context;
   }
 
   async getMigrationRecords() {
@@ -326,6 +337,9 @@ function createSchema(db, transaction) {
   ensureIndex(requisitions, "createdAt", "createdAt");
   ensureIndex(requisitions, "updatedAt", "updatedAt");
   ensureIndex(requisitions, "requestedBy", "requestedBy");
+  ensureIndex(requisitions, "organizationId", "organizationId");
+  ensureIndex(requisitions, "requestedByUserId", "requestedByUserId");
+  ensureIndex(requisitions, "localOwnerUserId", "localOwnerUserId");
 
   ensureStore(db, transaction, STORES.currentRequisition, { keyPath: "key" });
   ensureStore(db, transaction, STORES.catalog, { keyPath: "id" });
@@ -335,7 +349,10 @@ function createSchema(db, transaction) {
   ensureIndex(syncQueue, "status", "status");
   ensureIndex(syncQueue, "createdAt", "createdAt");
   ensureIndex(syncQueue, "nextRetryAt", "nextRetryAt");
+  ensureIndex(syncQueue, "organizationId", "organizationId");
+  ensureIndex(syncQueue, "userId", "userId");
   ensureStore(db, transaction, STORES.metadata, { keyPath: "key" });
+  ensureStore(db, transaction, STORES.authContexts, { keyPath: "userId" });
 }
 
 function ensureStore(db, transaction, name, options) {
