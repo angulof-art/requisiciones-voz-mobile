@@ -5,7 +5,7 @@ import {
   parseList,
   unitOptions
 } from "./catalog.js?v=2.0.0-beta.2";
-import { downloadExcel, printPdf } from "./exporters.js?v=2.0.0-beta.2";
+import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-beta.2";
 import {
   STATUS,
   addChange,
@@ -160,6 +160,7 @@ const els = {
   confirmButton: document.querySelector("#confirmButton"),
   exportPdfButton: document.querySelector("#exportPdfButton"),
   exportCsvButton: document.querySelector("#exportCsvButton"),
+  shareButton: document.querySelector("#shareButton"),
   newOrderButtons: document.querySelectorAll("[data-new-order]"),
   historySearch: document.querySelector("#historySearch"),
   historyStatus: document.querySelector("#historyStatus"),
@@ -372,6 +373,7 @@ function bindEvents() {
   els.confirmButton.addEventListener("click", confirmOrder);
   els.exportPdfButton.addEventListener("click", exportPdf);
   els.exportCsvButton.addEventListener("click", exportCsv);
+  els.shareButton.addEventListener("click", shareOrder);
   els.newOrderButtons.forEach((button) => button.addEventListener("click", startNewOrder));
 
   ["input", "change"].forEach((eventName) => {
@@ -958,10 +960,10 @@ async function ensureServerRequisitionNumber() {
 async function exportPdf() {
   if (!validateBeforeExport()) return;
   try {
-    printPdf(state.current, state.settings.hourFormat);
+    downloadPdf(withExportContext(state.current), state.settings.hourFormat);
     markExported(state.current);
     if (!(await saveOrderAndQueue())) return;
-    toast("PDF listo para imprimir o guardar.");
+    toast("PDF generado y descargado.");
     render();
   } catch (error) {
     toast(error.message);
@@ -970,11 +972,36 @@ async function exportPdf() {
 
 async function exportCsv() {
   if (!validateBeforeExport()) return;
-  downloadExcel(state.current, state.catalog, state.settings.hourFormat);
+  downloadExcel(withExportContext(state.current), state.catalog, state.settings.hourFormat);
   markExported(state.current);
   if (!(await saveOrderAndQueue())) return;
   toast("Archivo Excel generado.");
   render();
+}
+
+async function shareOrder() {
+  if (!validateBeforeExport()) return;
+  try {
+    const result = await shareRequisition(withExportContext(state.current));
+    markExported(state.current);
+    if (!(await saveOrderAndQueue())) return;
+    toast(result === "copied" ? "Pedido copiado. Puede pegarlo en la aplicación que prefiera." : "Pedido compartido.");
+  } catch (error) {
+    if (error.name !== "AbortError") toast(error.message || "No se pudo compartir el pedido.");
+  }
+}
+
+function withExportContext(requisition) {
+  const origin = userContext.departments.find((department) => department.id === requisition.departmentId);
+  const destination = userContext.departments.find((department) => department.id === requisition.destinationDepartmentId);
+  const location = userContext.locations.find((entry) => entry.id === requisition.locationId);
+  return {
+    ...clone(requisition),
+    organizationName: userContext.organization?.name || "",
+    locationName: location?.name || userContext.location?.name || "",
+    departmentName: origin?.name || userContext.department?.name || "",
+    destinationDepartmentName: destination?.name || ""
+  };
 }
 
 function validateBeforeExport() {

@@ -246,7 +246,10 @@ administrativo separado.
 Fase 7: dashboard operativo implementado para manager/administrator con KPIs,
 productos, faltantes, sustituciones, departamentos y filtros.
 
-Fases 8 y 9: exportacion y Web Share; QA de rendimiento,
+Fase 8: PDF descargable, XLSX de dos hojas, CSV compatible y Web Share
+implementados.
+
+Fase 9: QA de rendimiento,
 accesibilidad, seguridad, dispositivos, offline y conflictos.
 
 ## 8. Archivos previstos

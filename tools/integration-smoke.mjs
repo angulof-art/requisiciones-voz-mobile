@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { DEFAULT_CATALOG, normalizeCatalog } from "../src/catalog.js";
 import {
   buildPrintableHtml,
+  buildShareText,
   requisitionToCsv,
   requisitionToExcelRows,
+  requisitionToOperationalRows,
+  requisitionToPdfBlob,
   requisitionToXlsxBlob
 } from "../src/exporters.js";
 import { parseRequisitionText } from "../src/parser.js";
@@ -87,12 +90,23 @@ const zipText = new TextDecoder().decode(bytes);
 assert.equal(bytes[0], 0x50);
 assert.equal(bytes[1], 0x4b);
 assert.ok(zipText.includes("xl/worksheets/sheet1.xml"));
+assert.ok(zipText.includes("xl/worksheets/sheet2.xml"));
 assert.ok(zipText.includes("autoFilter"));
 assert.ok(zipText.includes("Unidad de compra"));
+assert.ok(zipText.includes("Detalle operativo"));
+
+const operationalRows = requisitionToOperationalRows(requisition);
+assert.equal(operationalRows[0][13], "Solicitado");
+assert.equal(typeof operationalRows[1][13], "number");
+assert.ok(buildShareText({ ...requisition, departmentName: "Cocina", destinationDepartmentName: "Bodega" }).includes("Cocina → Bodega"));
 
 const pdfHtml = buildPrintableHtml(requisition);
 assert.ok(pdfHtml.includes("Guardar como PDF"));
-assert.ok(pdfHtml.includes("window.print"));
+assert.ok(pdfHtml.includes('id="printButton"'));
+assert.equal(pdfHtml.includes("onclick="), false);
+const pdfBytes = new Uint8Array(await requisitionToPdfBlob(requisition).arrayBuffer());
+assert.equal(new TextDecoder("latin1").decode(pdfBytes.slice(0, 8)).startsWith("%PDF-1.4"), true);
+assert.ok(pdfBytes.length > 1000);
 
 const invalid = createRequisition([requisition]);
 invalid.items = parsed.items;

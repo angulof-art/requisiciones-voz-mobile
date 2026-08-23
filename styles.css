@@ -1018,6 +1018,26 @@ h2 {
   min-width: 64px;
 }
 
+@media (max-width: 480px) {
+  .order-actions {
+    flex-wrap: wrap;
+  }
+
+  .order-actions > button,
+  .export-actions {
+    width: 100%;
+  }
+
+  .export-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .export-actions button {
+    min-width: 0;
+  }
+}
+
 .file-button {
   display: inline-grid;
   place-items: center;

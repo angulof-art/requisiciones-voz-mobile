@@ -28,6 +28,36 @@ export function requisitionToCsv(requisition, catalogOrHourFormat = [], hourForm
   return rowsToCsv(requisitionToExcelRows(requisition, catalog, resolvedHourFormat));
 }
 
+export function requisitionToOperationalRows(requisition, hourFormat = "24") {
+  const created = formatDateParts(requisition.createdAt, hourFormat);
+  const required = formatDateParts(requisition.requiredAt || requisition.createdAt, hourFormat);
+  const headers = [
+    "Número", "Fecha", "Hora", "Organización", "Sede", "Origen", "Destino",
+    "Responsable", "Prioridad", "Fecha requerida", "Estado", "Código",
+    "Producto", "Solicitado", "Entregado", "Unidad", "Cumplimiento", "Observaciones"
+  ];
+  return [headers, ...(requisition.items || []).map((item) => [
+    requisition.requisitionNumber,
+    created.date,
+    created.time,
+    requisition.organizationName || "",
+    requisition.locationName || "",
+    requisition.departmentName || "",
+    requisition.destinationDepartmentName || "",
+    requisition.requestedByName || requisition.requestedBy || "",
+    requisition.priority || "normal",
+    `${required.date} ${required.time}`,
+    STATUS[requisition.status] || requisition.status,
+    item.productCode || "",
+    item.productName,
+    Number(item.requestedQuantity || item.quantity || 0),
+    Number(item.deliveredQuantity || 0),
+    item.unit,
+    item.fulfillmentStatus || "requested",
+    item.notes || item.unavailableReason || ""
+  ])];
+}
+
 export function downloadCsv(requisition, catalogOrHourFormat = [], hourFormat = "24") {
   const { catalog, resolvedHourFormat } = resolveExportArgs(catalogOrHourFormat, hourFormat);
   const csv = requisitionToCsv(requisition, catalog, resolvedHourFormat);
@@ -40,7 +70,10 @@ export function downloadCsv(requisition, catalogOrHourFormat = [], hourFormat = 
 export function requisitionToXlsxBlob(requisition, catalog = [], hourFormat = "24") {
   const rows = requisitionToExcelRows(requisition, catalog, hourFormat);
   const files = buildWorkbookFiles(
-    [{ name: safeSheetName(requisition.requisitionNumber || "Pedido"), rows }],
+    [
+      { name: safeSheetName(requisition.requisitionNumber || "Pedido"), rows },
+      { name: "Detalle operativo", rows: requisitionToOperationalRows(requisition, hourFormat) }
+    ],
     {
       title: `Pedido ${requisition.requisitionNumber || ""}`.trim(),
       creator: "Pedidos por Voz"
@@ -57,6 +90,20 @@ export function downloadExcel(requisition, catalogOrHourFormat = [], hourFormat 
   );
 }
 
+export function requisitionToPdfBlob(requisition, hourFormat = "24") {
+  const items = requisition.items || [];
+  const pageSize = 22;
+  const pages = [];
+  for (let index = 0; index < Math.max(items.length, 1); index += pageSize) {
+    pages.push(buildPdfPage(requisition, items.slice(index, index + pageSize), hourFormat, pages.length + 1));
+  }
+  return new Blob([buildPdfDocument(pages)], { type: "application/pdf" });
+}
+
+export function downloadPdf(requisition, hourFormat = "24") {
+  downloadBlob(requisitionToPdfBlob(requisition, hourFormat), `${safeFileName(requisition.requisitionNumber)}.pdf`);
+}
+
 export function printPdf(requisition, hourFormat = "24") {
   const html = buildPrintableHtml(requisition, hourFormat);
   const popup = window.open("", "_blank");
@@ -66,6 +113,11 @@ export function printPdf(requisition, hourFormat = "24") {
   popup.document.open();
   popup.document.write(html);
   popup.document.close();
+  const print = () => {
+    try { popup.print(); } catch {}
+  };
+  popup.document.querySelector("#printButton")?.addEventListener("click", print);
+  window.setTimeout(print, 500);
   popup.focus();
 }
 
@@ -73,6 +125,7 @@ export function buildPrintableHtml(requisition, hourFormat = "24") {
   const created = formatDateParts(requisition.createdAt, hourFormat);
   const generated = formatDateParts(new Date(), hourFormat);
   const status = STATUS[requisition.status] || requisition.status;
+  const required = formatDateParts(requisition.requiredAt || requisition.createdAt, hourFormat);
   const rows =
     (requisition.items || [])
       .map(
@@ -81,12 +134,14 @@ export function buildPrintableHtml(requisition, hourFormat = "24") {
           <td>${index + 1}</td>
           <td>${escapeHtml(item.productCode || "")}</td>
           <td>${escapeHtml(item.productName)}</td>
-          <td class="num">${formatNumber(item.quantity)}</td>
+          <td class="num">${formatNumber(item.requestedQuantity || item.quantity)}</td>
+          <td class="num">${formatNumber(item.deliveredQuantity || 0)}</td>
           <td>${escapeHtml(item.unit)}</td>
+          <td>${escapeHtml(item.fulfillmentStatus || "Solicitado")}</td>
           <td>${escapeHtml(item.notes || "")}</td>
         </tr>`
       )
-      .join("") || '<tr><td colspan="6">Sin productos.</td></tr>';
+      .join("") || '<tr><td colspan="8">Sin productos.</td></tr>';
 
   return `<!doctype html>
   <html lang="es">
@@ -113,17 +168,22 @@ export function buildPrintableHtml(requisition, hourFormat = "24") {
       </style>
     </head>
     <body>
-      <button class="print-action" onclick="window.print()">Guardar como PDF</button>
+      <button class="print-action" id="printButton" type="button">Guardar como PDF</button>
       <header>
         <div>
           <h1>Pedido o Requisicion</h1>
           <p><strong>Numero:</strong> ${escapeHtml(requisition.requisitionNumber)}</p>
-          <p><strong>Responsable:</strong> ${escapeHtml(requisition.requestedBy)}</p>
+          <p><strong>Organizacion:</strong> ${escapeHtml(requisition.organizationName || "")}</p>
+          <p><strong>Sede:</strong> ${escapeHtml(requisition.locationName || "")}</p>
+          <p><strong>Ruta:</strong> ${escapeHtml(requisition.departmentName || "Origen")} → ${escapeHtml(requisition.destinationDepartmentName || "Destino")}</p>
+          <p><strong>Responsable:</strong> ${escapeHtml(requisition.requestedByName || requisition.requestedBy)}</p>
         </div>
         <div>
           <p><strong>Fecha:</strong> ${created.date}</p>
           <p><strong>Hora:</strong> ${created.time}</p>
           <p><strong>Estado:</strong> ${escapeHtml(status)}</p>
+          <p><strong>Prioridad:</strong> ${escapeHtml(requisition.priority || "normal")}</p>
+          <p><strong>Requerido:</strong> ${required.date} ${required.time}</p>
           <p><strong>Generado:</strong> ${generated.date} ${generated.time}</p>
         </div>
       </header>
@@ -133,8 +193,10 @@ export function buildPrintableHtml(requisition, hourFormat = "24") {
             <th>#</th>
             <th>Codigo</th>
             <th>Producto</th>
-            <th>Cantidad</th>
+            <th>Solicitado</th>
+            <th>Entregado</th>
             <th>Unidad</th>
+            <th>Cumplimiento</th>
             <th>Observaciones</th>
           </tr>
         </thead>
@@ -144,15 +206,121 @@ export function buildPrintableHtml(requisition, hourFormat = "24") {
         <div class="line">Revisado por</div>
         <div class="line">Firma / recibido</div>
       </section>
-      <script>
-        window.addEventListener("load", () => {
-          window.setTimeout(() => {
-            try { window.print(); } catch (error) {}
-          }, 500);
-        });
-      </script>
     </body>
   </html>`;
+}
+
+export function buildShareText(requisition) {
+  const route = [requisition.departmentName || "Origen", requisition.destinationDepartmentName || "Destino"].join(" → ");
+  const lines = (requisition.items || []).map((item) =>
+    `${formatNumber(item.requestedQuantity || item.quantity)} ${item.unit} ${item.productName}`
+  );
+  return [requisition.requisitionNumber, route, "", ...lines].join("\n");
+}
+
+export async function shareRequisition(requisition) {
+  const text = buildShareText(requisition);
+  if (navigator.share) {
+    await navigator.share({ title: requisition.requisitionNumber, text });
+    return "shared";
+  }
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return "copied";
+  }
+  throw new Error("Este navegador no permite compartir ni copiar automáticamente.");
+}
+
+function buildPdfPage(requisition, items, hourFormat, pageNumber) {
+  const created = formatDateParts(requisition.createdAt, hourFormat);
+  const required = formatDateParts(requisition.requiredAt || requisition.createdAt, hourFormat);
+  const status = STATUS[requisition.status] || requisition.status;
+  const commands = [
+    textCommand(42, 800, 17, "PEDIDO O REQUISICION", true),
+    textCommand(42, 778, 10, `${requisition.requisitionNumber}   Pagina ${pageNumber}`),
+    textCommand(42, 758, 9, `Organizacion: ${requisition.organizationName || "-"}   Sede: ${requisition.locationName || "-"}`),
+    textCommand(42, 743, 9, `Ruta: ${requisition.departmentName || "Origen"} -> ${requisition.destinationDepartmentName || "Destino"}`),
+    textCommand(42, 728, 9, `Responsable: ${requisition.requestedByName || requisition.requestedBy || "-"}`),
+    textCommand(42, 713, 9, `Creado: ${created.date} ${created.time}   Requerido: ${required.date} ${required.time}`),
+    textCommand(42, 698, 9, `Prioridad: ${requisition.priority || "normal"}   Estado: ${status}`),
+    "0.06 0.47 0.37 RG 1.5 w 42 687 m 553 687 l S",
+    textCommand(44, 669, 8, "PRODUCTO", true),
+    textCommand(305, 669, 8, "SOLICITADO", true),
+    textCommand(375, 669, 8, "ENTREGADO", true),
+    textCommand(445, 669, 8, "UNIDAD", true),
+    textCommand(495, 669, 8, "ESTADO", true)
+  ];
+  let y = 650;
+  const safeItems = items.length ? items : [{ productName: "Sin productos", quantity: 0, unit: "" }];
+  safeItems.forEach((item) => {
+    commands.push("0.82 0.86 0.85 RG 0.5 w 42 " + (y - 5) + " m 553 " + (y - 5) + " l S");
+    commands.push(textCommand(44, y + 5, 8, truncatePdfText(item.productName, 46)));
+    commands.push(textCommand(305, y + 5, 8, formatNumber(item.requestedQuantity || item.quantity || 0)));
+    commands.push(textCommand(375, y + 5, 8, formatNumber(item.deliveredQuantity || 0)));
+    commands.push(textCommand(445, y + 5, 8, item.unit || ""));
+    commands.push(textCommand(495, y + 5, 7, truncatePdfText(item.fulfillmentStatus || "requested", 14)));
+    const note = item.notes || item.unavailableReason || "";
+    if (note) commands.push(textCommand(44, y - 7, 7, truncatePdfText(`Nota: ${note}`, 80)));
+    y -= 25;
+  });
+  commands.push("0.2 0.2 0.2 RG 0.7 w 42 75 m 250 75 l S", "0.2 0.2 0.2 RG 0.7 w 340 75 m 553 75 l S");
+  commands.push(textCommand(42, 60, 8, "Revisado por"), textCommand(340, 60, 8, "Firma / recibido"));
+  return commands.join("\n");
+}
+
+function buildPdfDocument(pageContents) {
+  const objects = [];
+  const pageRefs = pageContents.map((_, index) => `${4 + index * 2} 0 R`).join(" ");
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] = `<< /Type /Pages /Kids [${pageRefs}] /Count ${pageContents.length} >>`;
+  objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+  pageContents.forEach((content, index) => {
+    const pageId = 4 + index * 2;
+    const contentId = pageId + 1;
+    const contentBytes = latin1Bytes(content);
+    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`;
+    objects[contentId] = `<< /Length ${contentBytes.length} >>\nstream\n${content}\nendstream`;
+  });
+  const chunks = [latin1Bytes("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n")];
+  const offsets = [0];
+  let offset = chunks[0].length;
+  for (let id = 1; id < objects.length; id += 1) {
+    offsets[id] = offset;
+    const chunk = latin1Bytes(`${id} 0 obj\n${objects[id]}\nendobj\n`);
+    chunks.push(chunk);
+    offset += chunk.length;
+  }
+  const xrefOffset = offset;
+  let xref = `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  for (let id = 1; id < objects.length; id += 1) xref += `${String(offsets[id]).padStart(10, "0")} 00000 n \n`;
+  xref += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  chunks.push(latin1Bytes(xref));
+  const output = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+  let cursor = 0;
+  chunks.forEach((chunk) => { output.set(chunk, cursor); cursor += chunk.length; });
+  return output;
+}
+
+function textCommand(x, y, size, text, bold = false) {
+  return `BT /F1 ${bold ? size + 1 : size} Tf ${x} ${y} Td (${escapePdfText(text)}) Tj ET`;
+}
+
+function escapePdfText(value) {
+  return String(value ?? "")
+    .replace(/[^\x20-\xFF]/g, "?")
+    .replace(/([\\()])/g, "\\$1");
+}
+
+function truncatePdfText(value, length) {
+  const text = String(value || "");
+  return text.length > length ? `${text.slice(0, length - 3)}...` : text;
+}
+
+function latin1Bytes(value) {
+  const text = String(value || "");
+  const bytes = new Uint8Array(text.length);
+  for (let index = 0; index < text.length; index += 1) bytes[index] = text.charCodeAt(index) & 0xff;
+  return bytes;
 }
 
 export function downloadBlob(blob, filename) {

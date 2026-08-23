@@ -66,6 +66,11 @@ La experiencia movil deriva frecuentes del historial local y guarda plantillas
 en settings del contexto aislado. La voz funciona por presion sostenida hasta
 45 segundos, muestra transcripcion parcial y respeta `prefers-reduced-motion`.
 
+Las exportaciones no dependen de servicios externos: el PDF y el XLSX se
+construyen como archivos binarios en el navegador. Excel conserva una hoja
+simple de tres columnas y agrega una segunda hoja operativa. Web Share usa la
+hoja nativa del dispositivo y copia al portapapeles como fallback.
+
 ## Actualizacion PWA
 
 La version se toma de `package.json` y `pnpm run version:sync` actualiza los
