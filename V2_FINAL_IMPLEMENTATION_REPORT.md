@@ -9,8 +9,9 @@ real de Auth/RLS.
 
 ## 2. Commit final
 
-El SHA del commit de implementacion de Fase 9 se agrega despues de cerrar las
-pruebas finales. Los commits de Fases 3 a 8 estan identificados en el historial.
+Commit final de implementacion de Fase 9: `d75142b`,
+`test: add production readiness and conflict hardening`. Los commits de Fases
+3 a 8 estan identificados en el historial.
 
 ## 3. Fases completadas
 
