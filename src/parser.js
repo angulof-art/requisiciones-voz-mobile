@@ -1,6 +1,7 @@
 import {
   displayName,
   findProductMatch,
+  findProductSuggestions,
   normalizeText,
   normalizeUnit,
   notesFromRawProduct,
@@ -24,6 +25,10 @@ const FILLER_WORDS = new Set([
   "incluya",
   "incluir",
   "quiero",
+  "pongame",
+  "ponga",
+  "deme",
+  "dame",
   "solicito",
   "solicitar"
 ]);
@@ -100,7 +105,7 @@ const CONJUNCTIONS = new Set(["y", "e"]);
 export function parseRequisitionText(text, catalog = []) {
   const originalText = String(text || "").trim();
   const command = detectCommand(originalText);
-  const baseText = command ? command.rest : originalText;
+  const baseText = normalizeQuantityIdioms(command ? command.rest : originalText);
   const phrases = splitProductPhrases(baseText);
   const items = phrases
     .map((phrase) => parseProductPhrase(phrase, catalog))
@@ -148,6 +153,10 @@ export function detectCommand(text) {
     };
   }
 
+  if (/\b(deshaga|deshacer|deshace)\b/.test(normalized)) {
+    return { type: "undo", rest: "" };
+  }
+
   return null;
 }
 
@@ -158,9 +167,10 @@ export function splitProductPhrases(text) {
     .trim();
   if (!cleaned) return [];
 
-  const commaParts = cleaned
+  const protectedDecimals = cleaned.replace(/(\d)[,.](\d)/g, "$1decimalmarker$2");
+  const commaParts = protectedDecimals
     .split(/[.;\n,]+/)
-    .map((part) => part.trim())
+    .map((part) => part.replace(/decimalmarker/g, ".").trim())
     .filter(Boolean);
 
   const merged = [];
@@ -228,7 +238,7 @@ export function parseProductPhrase(phrase, catalog = []) {
   });
 }
 
-function buildParsedItem({ originalText, rawProductName, quantity, unit, unitExplicit, match }) {
+function buildParsedItem({ originalText, rawProductName, quantity, unit, unitExplicit, match, catalog }) {
   const product = match?.product || null;
   const matched = product && match.score >= 0.62;
   const productName = matched ? product.officialName : displayName(rawProductName);
@@ -248,6 +258,9 @@ function buildParsedItem({ originalText, rawProductName, quantity, unit, unitExp
     )
   );
 
+  const suggestions = buildSuggestions(rawProductName, match, catalog);
+  const ambiguous = suggestions.length > 1 && suggestions[0].score - suggestions[1].score < 0.08;
+  const adjustedConfidence = ambiguous ? Math.min(confidence, 69) : confidence;
   return {
     id: createLineId(),
     productId: product?.id || "",
@@ -258,17 +271,29 @@ function buildParsedItem({ originalText, rawProductName, quantity, unit, unitExp
     unit: normalizedUnit,
     notes: notesFromRawProduct(rawProductName, product),
     originalText,
-    confidence,
-    needsReview: !matched || !hasQuantity || !hasUnit || !unitAllowed || confidence < 70,
+    confidence: adjustedConfidence,
+    confidenceBand: adjustedConfidence >= 90 ? "high" : adjustedConfidence >= 70 ? "medium" : "review",
+    needsReview: !matched || !hasQuantity || !hasUnit || !unitAllowed || adjustedConfidence < 70,
     unitAllowed,
     unitExplicit,
-    suggestions: matched ? [] : buildSuggestions(rawProductName, match)
+    unitInferred: Boolean(hasUnit && !unitExplicit),
+    ambiguous,
+    suggestions: ambiguous || !matched ? suggestions : []
   };
 }
 
-function buildSuggestions(rawProductName, match) {
+function buildSuggestions(rawProductName, match, catalog) {
+  const candidates = findProductSuggestions(rawProductName, catalog || [], 3)
+    .filter((candidate) => candidate.score >= 0.36)
+    .map((candidate) => ({
+      code: candidate.product.code,
+      name: candidate.product.officialName,
+      productId: candidate.product.id,
+      score: candidate.score
+    }));
+  if (candidates.length) return candidates;
   if (!match?.product || match.score < 0.36) return [];
-  return [{ code: match.product.code, name: match.product.officialName, score: match.score }];
+  return [{ code: match.product.code, name: match.product.officialName, productId: match.product.id, score: match.score }];
 }
 
 function parseChangeCommand(command, catalog) {
@@ -386,6 +411,12 @@ export function parseQuantityAt(tokens, start) {
     return { quantity: numeric, start, end: start + 1 };
   }
 
+  if (token === "medio" || token === "media") return { quantity: 0.5, start, end: start + 1 };
+  if (token === "cuarto" || token === "cuarta") return { quantity: 0.25, start, end: start + 1 };
+  if (token === "tres" && tokens[start + 1] === "cuartos") {
+    return { quantity: 0.75, start, end: start + 2 };
+  }
+
   const words = [];
   for (let index = start; index < Math.min(tokens.length, start + 7); index += 1) {
     const word = tokens[index];
@@ -449,6 +480,8 @@ function parseIntegerWords(words) {
 
 function parseNumericToken(token) {
   const normalized = String(token || "").replace(",", ".");
+  const fraction = normalized.match(/^(\d+)\/(\d+)$/);
+  if (fraction && Number(fraction[2]) !== 0) return Number(fraction[1]) / Number(fraction[2]);
   if (!/^\d+(\.\d+)?$/.test(normalized)) return NaN;
   return Number(normalized);
 }
@@ -459,6 +492,16 @@ function isNumberWord(word) {
 
 function isNumberContinuation(word) {
   return Boolean(word && (word === "y" || DECIMAL_WORDS.has(word) || isNumberWord(word)));
+}
+
+function normalizeQuantityIdioms(text) {
+  let normalized = normalizeText(text);
+  normalized = normalized.replace(/\b(?:un|uno)?\s*kilos?\s+y\s+medio\b/g, "1.5 kilo");
+  normalized = normalized.replace(/\b(\d+)\s+kilos?\s+y\s+medio\b/g, (_, value) => `${Number(value) + 0.5} kilo`);
+  normalized = normalized.replace(/\btres\s+cuartos(?:\s+de)?\b/g, "0.75 ");
+  normalized = normalized.replace(/\b(?:un\s+)?cuarto(?:\s+de)?\b/g, "0.25 ");
+  normalized = normalized.replace(/\bmedi[oa](?:\s+de)?\b/g, "0.5 ");
+  return normalized.replace(/\s+/g, " ").trim();
 }
 
 function createLineId() {

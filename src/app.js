@@ -1,11 +1,11 @@
 import {
   catalogFromCsv,
+  normalizeText,
   normalizeCatalogProduct,
   parseList,
   unitOptions
 } from "./catalog.js?v=2.0.0-beta.2";
 import { downloadExcel, printPdf } from "./exporters.js?v=2.0.0-beta.2";
-import { parseRequisitionText } from "./parser.js?v=2.0.0-beta.2";
 import {
   STATUS,
   addChange,
@@ -49,10 +49,12 @@ import {
 } from "./storage.js?v=2.0.0-beta.2";
 import {
   classifySupabaseError,
+  fetchProductAliases,
   fetchRequisitionsFromSupabase,
   isSupabaseReady,
   normalizeSupabaseUrl,
   reserveRequisitionNumber,
+  saveProductAliasLearning,
   setSupabaseSessionContext,
   syncAllToSupabase,
   testSupabase,
@@ -67,6 +69,7 @@ import {
   signInWithPassword,
   signOut
 } from "./auth/session.js?v=2.0.0-beta.2";
+import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-beta.2";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
@@ -629,37 +632,37 @@ function processTranscript(textOverride = null) {
     toast("No hay texto para procesar.");
     return;
   }
-  const parsed = parseRequisitionText(text, state.catalog);
-  state.current.originalTranscript = [state.current.originalTranscript, parsed.originalText]
+  const learnedCatalog = enrichCatalogWithAliases(state.catalog, state.settings.voiceAliases || {});
+  const voiceResult = processVoiceRequest(text, replaceIndex === null ? state.current.items : [], learnedCatalog);
+  state.current.originalTranscript = [state.current.originalTranscript, text]
     .filter(Boolean)
     .join("\n");
 
-  if (parsed.command && ["remove", "change", "remove-last"].includes(parsed.command.type)) {
-    toast("Orden avanzada detectada. Revise y aplique el cambio manualmente.");
-    if (parsed.command.type === "remove-last") return;
+  if (voiceResult.action === "undo") {
+    undoLast();
+    return;
   }
-
-  if (!parsed.items.length) {
-    toast("No pude identificar productos. Revise la transcripción.");
+  if (voiceResult.action === "none") {
+    toast(voiceResult.message || "No pude identificar productos. Revise la transcripción.");
     return;
   }
 
   pushUndo();
-  if (replaceIndex !== null && parsed.items.length === 1) {
-    state.current.items[replaceIndex] = normalizeItem(parsed.items[0]);
+  if (replaceIndex !== null) {
+    state.current.items.splice(replaceIndex, 1, ...voiceResult.items.map(normalizeItem));
     replaceIndex = null;
   } else {
-    state.current.items.push(...parsed.items.map(normalizeItem));
+    state.current.items = voiceResult.items.map(normalizeItem);
   }
-  addChange(state.current, "dictado", null, parsed.items);
-  els.lastTranscript.textContent = `Último dictado: ${parsed.originalText}`;
+  addChange(state.current, `voz_${voiceResult.action}`, null, voiceResult.affectedItems);
+  els.lastTranscript.textContent = `Último dictado: ${text}`;
   els.lastTranscript.hidden = false;
   els.transcriptInput.value = "";
   autoSaveOrder();
   renderSummary();
   renderItems();
   showDuplicateSuggestion(true);
-  toast(`${parsed.items.length} ${parsed.items.length === 1 ? "producto agregado" : "productos agregados"}.`);
+  toast(voiceResult.message);
 }
 
 function addManualRow() {
@@ -701,7 +704,7 @@ function handleItemEdit(event) {
   if (field === "productName" && event.type === "change") renderItems();
 }
 
-function handleItemAction(event) {
+async function handleItemAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
   const card = button.closest("[data-id]");
@@ -761,11 +764,26 @@ function handleItemAction(event) {
     toast(`Dicte de nuevo la línea ${index + 1}.`);
   }
   if (button.dataset.action === "suggestion") {
+    const spokenPhrase = item.rawProductName || item.productName;
     item.productName = button.dataset.name;
     item.productCode = button.dataset.code;
+    const selectedProduct = state.catalog.find((product) => product.id === button.dataset.productId || product.code === button.dataset.code);
+    item.productId = selectedProduct?.id || item.productId;
     item.needsReview = false;
     item.confidence = 88;
     addChange(state.current, "seleccionar_sugerencia", null, item);
+    if (selectedProduct && spokenPhrase) {
+      state.settings.voiceAliases = state.settings.voiceAliases || {};
+      state.settings.voiceAliases[normalizeText(spokenPhrase)] = selectedProduct.id;
+      try {
+        await saveSettings(state.settings);
+        if (navigator.onLine && isSupabaseReady(state.settings.supabase)) {
+          await saveProductAliasLearning(state.settings.supabase, spokenPhrase, selectedProduct.id);
+        }
+      } catch (error) {
+        console.warn("No se pudo sincronizar el alias aprendido.", error);
+      }
+    }
   }
   autoSaveOrder();
   render();
@@ -1486,7 +1504,12 @@ function setCloudBusy(busy) {
 }
 
 async function refreshHistoryFromSupabase() {
-  const remoteRequisitions = await fetchRequisitionsFromSupabase(state.settings.supabase);
+  const [remoteRequisitions, remoteAliases] = await Promise.all([
+    fetchRequisitionsFromSupabase(state.settings.supabase),
+    fetchProductAliases(state.settings.supabase)
+  ]);
+  state.settings.voiceAliases = { ...(state.settings.voiceAliases || {}), ...remoteAliases };
+  await saveSettings(state.settings);
   const pendingIds = state.syncQueue
     .filter((entry) => entry.type === "requisition" && entry.payload?.id)
     .map((entry) => entry.payload.id);
@@ -1788,13 +1811,13 @@ function renderItems() {
     const suggestions = (item.suggestions || [])
       .map(
         (suggestion) =>
-          `<button class="secondary" type="button" data-action="suggestion" data-code="${escapeHtml(suggestion.code)}" data-name="${escapeHtml(suggestion.name)}">${escapeHtml(suggestion.name)}</button>`
+          `<button class="secondary" type="button" data-action="suggestion" data-code="${escapeHtml(suggestion.code)}" data-product-id="${escapeHtml(suggestion.productId || "")}" data-name="${escapeHtml(suggestion.name)}">${escapeHtml(suggestion.name)}</button>`
       )
       .join("");
     card.innerHTML = `
       <div class="item-header">
         <div class="item-title">Línea ${index + 1}</div>
-        ${item.needsReview ? '<span class="state-badge">Revisar</span>' : ""}
+        <span class="confidence-badge ${escapeHtml(item.confidenceBand || "review")}">${item.confidence >= 90 ? "Alta" : item.confidence >= 70 ? "Media" : "Revisar"} · ${Math.round(item.confidence || 0)}%</span>
       </div>
       <div class="item-grid">
         <label class="product-field">Producto <input data-field="productName" value="${escapeHtml(item.productName)}" ${disabled} /></label>
@@ -1803,7 +1826,7 @@ function renderItems() {
         ${item.notes ? `<label class="notes-field">Observaciones <input data-field="notes" value="${escapeHtml(item.notes)}" ${disabled} /></label>` : ""}
       </div>
       ${item.needsReview ? `<div class="review-callout">
-        <p class="review-note">Revise esta línea antes de confirmar.</p>
+        <p class="review-note">${item.ambiguous ? "¿Cuál producto quiso decir?" : "Revise esta línea antes de enviar."}</p>
         <button type="button" data-action="accept-review">Aceptar línea</button>
       </div>` : ""}
       ${item.unitAllowed === false ? `<label class="check-row">

@@ -132,10 +132,14 @@ export function normalizeItem(item) {
     notes: item.notes || "",
     originalText: item.originalText || item.original_text || "",
     confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : 0,
+    confidenceBand: item.confidenceBand || item.confidence_band || "review",
     needsReview: Boolean(item.needsReview || item.needs_review),
     unitAllowed: item.unitAllowed !== false,
     unitOverride: Boolean(item.unitOverride || item.unit_override),
-    unitExplicit: Boolean(item.unitExplicit || item.unit_explicit)
+    unitExplicit: Boolean(item.unitExplicit || item.unit_explicit),
+    unitInferred: Boolean(item.unitInferred || item.unit_inferred),
+    ambiguous: Boolean(item.ambiguous),
+    suggestions: Array.isArray(item.suggestions) ? item.suggestions.slice(0, 3) : []
   };
 }
 

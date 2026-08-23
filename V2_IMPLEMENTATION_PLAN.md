@@ -228,6 +228,8 @@ recepcion y estado por linea.
 
 ### Fase 5 - Voice Engine V2
 
+Estado: implementada y validada con 177 frases (100 % en dataset controlado).
+
 Fracciones, comandos aplicables, contexto, ambiguedades, confianza explicable,
 alias aprendidos y dataset de al menos 150 frases.
 

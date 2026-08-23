@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "node --check src/version.js && node --check src/parser.js && node --check src/catalog.js && node --check src/requisitions.js && node --check src/workflow.js && node --check src/auth/client.js && node --check src/auth/session.js && node --check src/auth/context.js && node --check src/auth/permissions.js && node --check src/db/indexeddb.js && node --check src/db/migrate-v10.js && node --check src/storage.js && node --check src/exporters.js && node --check src/supabase.js && node --check src/app.js",
+    "lint": "node --check src/version.js && node --check src/parser.js && node --check src/voice-engine.js && node --check src/catalog.js && node --check src/requisitions.js && node --check src/workflow.js && node --check src/auth/client.js && node --check src/auth/session.js && node --check src/auth/context.js && node --check src/auth/permissions.js && node --check src/db/indexeddb.js && node --check src/db/migrate-v10.js && node --check src/storage.js && node --check src/exporters.js && node --check src/supabase.js && node --check src/app.js",
     "build": "node tools/sync-version.mjs --check && node tools/static-smoke.mjs",
     "catalog:sync": "node tools/sync-master-catalog.mjs",
-    "test": "node tools/parser-smoke.mjs && node tools/auth-smoke.mjs && node tools/workflow-smoke.mjs && node tools/integration-smoke.mjs && node tools/indexeddb-smoke.mjs && node tools/sync-version.mjs --check && node tools/static-smoke.mjs",
+    "test": "node tools/parser-smoke.mjs && node tools/voice-engine-smoke.mjs && node tools/voice-dataset.mjs && node tools/auth-smoke.mjs && node tools/workflow-smoke.mjs && node tools/integration-smoke.mjs && node tools/indexeddb-smoke.mjs && node tools/sync-version.mjs --check && node tools/static-smoke.mjs",
     "test:parser": "node tools/parser-smoke.mjs",
     "version:sync": "node tools/sync-version.mjs",
     "serve": "node tools/serve.mjs"

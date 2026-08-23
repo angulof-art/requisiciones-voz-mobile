@@ -35,7 +35,7 @@ export function normalizeText(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9ñ\s.,;]/g, " ")
+    .replace(/[^a-z0-9ñ\s.,;/]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -110,21 +110,28 @@ export function createCatalogId(seed) {
 }
 
 export function findProductMatch(rawName, catalog) {
-  const normalizedName = normalizeText(rawName);
-  if (!normalizedName) return { product: null, score: 0, matchedBy: "" };
+  return findProductSuggestions(rawName, catalog, 1)[0] || { product: null, score: 0, matchedBy: "" };
+}
 
-  let best = { product: null, score: 0, matchedBy: "" };
+export function findProductSuggestions(rawName, catalog, limit = 3) {
+  const normalizedName = normalizeText(rawName);
+  if (!normalizedName) return [];
+
+  const byProduct = new Map();
   for (const product of (catalog || []).filter((entry) => entry.active !== false)) {
     const candidates = [product.officialName, ...(product.synonyms || [])];
     for (const candidate of candidates) {
       const candidateKey = normalizeText(candidate);
       const score = scoreProductName(normalizedName, candidateKey);
-      if (score > best.score) {
-        best = { product, score, matchedBy: candidate };
+      const previous = byProduct.get(product.id);
+      if (!previous || score > previous.score) {
+        byProduct.set(product.id, { product, score, matchedBy: candidate });
       }
     }
   }
-  return best;
+  return [...byProduct.values()]
+    .sort((left, right) => right.score - left.score)
+    .slice(0, Math.max(1, limit));
 }
 
 export function scoreProductName(input, candidate) {
@@ -142,7 +149,28 @@ export function scoreProductName(input, candidate) {
   const candidateTokens = new Set(singularCandidate.split(" ").filter(Boolean));
   const intersection = [...inputTokens].filter((token) => candidateTokens.has(token)).length;
   const union = new Set([...inputTokens, ...candidateTokens]).size || 1;
-  return intersection / union;
+  const tokenScore = intersection / union;
+  const distance = levenshteinDistance(singularInput, singularCandidate);
+  const characterScore = 1 - distance / Math.max(singularInput.length, singularCandidate.length, 1);
+  return Math.max(tokenScore, characterScore >= 0.72 ? characterScore * 0.9 : 0);
+}
+
+function levenshteinDistance(left, right) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    let diagonal = previous[0];
+    previous[0] = row;
+    for (let column = 1; column <= right.length; column += 1) {
+      const above = previous[column];
+      previous[column] = Math.min(
+        previous[column] + 1,
+        previous[column - 1] + 1,
+        diagonal + (left[row - 1] === right[column - 1] ? 0 : 1)
+      );
+      diagonal = above;
+    }
+  }
+  return previous[right.length];
 }
 
 export function singularize(value) {

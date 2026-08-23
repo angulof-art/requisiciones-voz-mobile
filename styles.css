@@ -268,6 +268,26 @@ h2 {
   color: var(--accent);
 }
 
+.confidence-badge {
+  min-width: max-content;
+  border-radius: 999px;
+  padding: 0.3rem 0.5rem;
+  background: #fff0ef;
+  color: var(--danger);
+  font-size: 0.72rem;
+  font-weight: 780;
+}
+
+.confidence-badge.high {
+  background: #ddf7e8;
+  color: var(--ok);
+}
+
+.confidence-badge.medium {
+  background: #fff4df;
+  color: var(--accent);
+}
+
 .screen {
   display: none;
 }

@@ -82,6 +82,48 @@ export async function reserveRequisitionNumber(settings) {
   });
 }
 
+export async function saveProductAliasLearning(settings, spokenPhrase, productId) {
+  if (!activeContext?.organizationId || !activeContext?.userId || !productId) return false;
+  const normalizedPhrase = String(spokenPhrase || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9ñ\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalizedPhrase) return false;
+  const existing = await supabaseRequest(settings, "product_alias_learning", {
+    query: `select=id,correction_count&organization_id=eq.${encodeURIComponent(activeContext.organizationId)}&product_id=eq.${encodeURIComponent(productId)}&normalized_phrase=eq.${encodeURIComponent(normalizedPhrase)}&limit=1`
+  });
+  if (existing?.[0]) {
+    await supabaseRequest(settings, "product_alias_learning", {
+      method: "PATCH",
+      query: `id=eq.${encodeURIComponent(existing[0].id)}`,
+      body: { correction_count: Number(existing[0].correction_count || 0) + 1, updated_at: new Date().toISOString() }
+    });
+  } else {
+    await supabaseRequest(settings, "product_alias_learning", {
+      method: "POST",
+      body: {
+        organization_id: activeContext.organizationId,
+        product_id: productId,
+        spoken_phrase: spokenPhrase,
+        normalized_phrase: normalizedPhrase,
+        created_by: activeContext.userId
+      }
+    });
+  }
+  return true;
+}
+
+export async function fetchProductAliases(settings) {
+  if (!activeContext?.organizationId) return {};
+  const rows = await supabaseRequest(settings, "product_alias_learning", {
+    query: `select=normalized_phrase,product_id&organization_id=eq.${encodeURIComponent(activeContext.organizationId)}&order=correction_count.desc&limit=1000`
+  });
+  return Object.fromEntries((rows || []).map((row) => [row.normalized_phrase, row.product_id]));
+}
+
 export async function syncRequisitionToSupabase(settings, requisition, catalog) {
   if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
   const workspaceId = settings.workspaceId || "main";

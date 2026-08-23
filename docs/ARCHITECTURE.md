@@ -9,6 +9,7 @@ externos, pruebas con Node y migraciones SQL separadas.
 ## Modulos
 
 - `src/parser.js`: convierte dictado en lineas estructuradas.
+- `src/voice-engine.js`: comandos aplicables, contexto y alias aprendidos.
 - `src/catalog.js`: catalogo maestro, unidades y coincidencias.
 - `src/requisitions.js`: pedidos, validaciones, numeracion, cambios y combinacion
   segura del historial local/remoto.
