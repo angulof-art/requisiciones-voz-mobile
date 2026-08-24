@@ -47,6 +47,12 @@ La cola sube cambios automaticamente cuando
 regresa la conexion y la aplicacion descarga y combina los pedidos remotos sin
 sobrescribir borradores locales mas recientes.
 
+La carga del contexto autenticado reintenta una sola vez los errores transitorios
+de consulta. Cuando el navegador indica conexion pero la red realmente falla,
+puede reutilizar el contexto local previamente validado para reabrir la PWA. Ese
+fallback no se aplica a usuario inactivo, membresia ausente, permisos denegados ni
+token invalido.
+
 El flujo operativo usa origen, destino, prioridad y fecha requerida. Supabase
 valida las transiciones y asigna consecutivos diarios; la bandeja receptora
 permite registrar entregas parciales, faltantes y sustituciones sin ampliar el
@@ -97,6 +103,10 @@ lecturas operativas y solo crea la auditoria con privilegios administrativos
 despues de validar membresia, permiso, organizacion, revision y destinatarios.
 El navegador nunca recibe emails como fuente autoritativa ni secretos del
 proveedor. Los detalles estan en `docs/EMAIL_DISTRIBUTION.md`.
+
+`tools/final-browser-audit.mjs` ejecuta la prueba real de cierre con Chromium:
+offline, reapertura, reconexion, sincronizacion, aislamiento A -> B -> A,
+responsive y exportaciones. Recibe credenciales QA exclusivamente por entorno.
 
 ## Actualizacion PWA
 

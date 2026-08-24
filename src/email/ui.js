@@ -11,8 +11,8 @@ import {
   setRecipientSelected,
   splitItemsByDistribution,
   validateDistribution
-} from "./distribution.js?v=2.0.0-beta.5";
-import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-beta.5";
+} from "./distribution.js?v=2.0.0-rc.1";
+import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.1";
 import {
   loadEmailConfiguration,
   loadEmailSendHistory,
@@ -22,12 +22,12 @@ import {
   saveEmailSettings,
   saveGroupRecipients,
   sendRequisitionEmail
-} from "./api.js?v=2.0.0-beta.5";
+} from "./api.js?v=2.0.0-rc.1";
 import {
   EMAIL_PERMISSIONS,
   canManageEmailDistribution,
   hasEmailPermission
-} from "./permissions.js?v=2.0.0-beta.5";
+} from "./permissions.js?v=2.0.0-rc.1";
 
 export function createEmailDistributionController(options) {
   const elements = collectElements();

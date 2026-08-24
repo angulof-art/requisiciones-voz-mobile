@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "../auth/client.js?v=2.0.0-beta.5";
+import { getSupabaseClient } from "../auth/client.js?v=2.0.0-rc.1";
 
 export async function loadEmailConfiguration(organizationId, options = {}) {
   const client = getSupabaseClient();

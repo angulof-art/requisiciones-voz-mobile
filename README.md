@@ -2,7 +2,7 @@
 
 Aplicacion web movil para crear pedidos o requisiciones por voz.
 
-Version actual: **2.0.0-beta.5**. La estrategia completa de evolucion y
+Version actual: **2.0.0-rc.1**. La estrategia completa de evolucion y
 migracion segura esta en `V2_IMPLEMENTATION_PLAN.md`.
 
 ## Funciones incluidas
@@ -68,6 +68,18 @@ funcionan mejor sobre `http://127.0.0.1`.
 pnpm run lint
 pnpm test
 pnpm run build
+pnpm run security:scan
+```
+
+La auditoria E2E final usa Chromium real y cuentas QA temporales proporcionadas
+mediante variables de entorno; no guarda contrasenas en el repositorio:
+
+```powershell
+$env:APP_URL="http://127.0.0.1:4177/"
+$env:QA_REQUESTER_EMAIL="..."
+$env:QA_RECEIVER_EMAIL="..."
+$env:QA_PASSWORD="..."
+pnpm run test:browser:final
 ```
 
 La version de `package.json` es la fuente de verdad. Despues de cambiarla:
@@ -77,6 +89,9 @@ pnpm run version:sync
 ```
 
 `test` y `build` fallan si HTML, manifest o imports conservan otra version.
+
+El cierre completo de V2 esta en `FINAL_RELEASE_AUDIT.md` y las novedades para
+usuarios en `RELEASE_NOTES_V2.md`.
 
 ## Catalogo
 

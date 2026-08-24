@@ -1,5 +1,9 @@
 # Pedidos por Voz V2 - Plan de implementacion
 
+Estado final: **cerrado en 2.0.0-rc.1 / READY FOR RC**. Todas las fases del nucleo
+estan completas. El unico pendiente externo es configurar y probar el proveedor
+de correo; ver `FINAL_RELEASE_AUDIT.md`.
+
 Fecha de auditoria: 22/08/2026  
 Version auditada: V10, commit `09424c6`  
 Objetivo inicial: estabilizar la base existente antes de migrar almacenamiento,

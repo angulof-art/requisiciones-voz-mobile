@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "./client.js?v=2.0.0-beta.5";
+import { getSupabaseClient } from "./client.js?v=2.0.0-rc.1";
 
 export class UserContextError extends Error {
   constructor(message, code = "context_error") {
