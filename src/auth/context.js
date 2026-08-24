@@ -101,6 +101,27 @@ export async function loadUserContext(session, cachedContext = null) {
   };
 }
 
+export async function loadUserContextWithRetry(
+  session,
+  cachedContext = null,
+  { loader = loadUserContext, delay = wait, retries = 1 } = {}
+) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await loader(session, cachedContext);
+    } catch (error) {
+      if (cachedContext?.userId === session?.user?.id && isNetworkContextError(error)) {
+        return { ...validateCachedContext(cachedContext), offline: true };
+      }
+      const retryable = globalThis.navigator?.onLine !== false && isRetryableContextError(error);
+      if (!retryable || attempt >= retries) throw error;
+      attempt += 1;
+      await delay(250 * attempt);
+    }
+  }
+}
+
 export function selectActiveContext(context, selection = {}) {
   const organization = context.organizations.find((entry) => entry.id === selection.organizationId) || context.organization;
   const locations = context.locations.filter((entry) => entry.organization_id === organization.id);
@@ -134,4 +155,19 @@ function throwIfQueryFailed(error, message) {
   const contextError = new UserContextError(message, error.code || "query_failed");
   contextError.technical = error.message || "";
   throw contextError;
+}
+
+function isRetryableContextError(error) {
+  return String(error?.message || "").startsWith("No se pudo") ||
+    ["query_failed", "PGRST301", "PGRST303"].includes(error?.code);
+}
+
+function isNetworkContextError(error) {
+  return /failed to fetch|networkerror|network request failed|load failed/i.test(
+    `${error?.technical || ""} ${error?.cause?.message || ""}`
+  );
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

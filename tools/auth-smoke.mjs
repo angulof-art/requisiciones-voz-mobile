@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { selectActiveContext } from "../src/auth/context.js";
+import { UserContextError, loadUserContextWithRetry, selectActiveContext } from "../src/auth/context.js";
 import {
   canSeeRequisitionLocally,
   hasPermission,
@@ -78,6 +78,52 @@ const requesterSelection = selectActiveContext(
 );
 assert.deepEqual(requesterSelection.departmentIds, [departmentA]);
 assert.deepEqual(requesterSelection.directoryDepartments.map((entry) => entry.id), [departmentA, departmentA2]);
+
+let retryCalls = 0;
+const recoveredContext = await loadUserContextWithRetry(
+  { user: { id: requester.userId } },
+  null,
+  {
+    loader: async () => {
+      retryCalls += 1;
+      if (retryCalls === 1) throw new UserContextError("No se pudieron cargar las organizaciones.", "PGRST301");
+      return requester;
+    },
+    delay: async () => {}
+  }
+);
+assert.equal(recoveredContext.userId, requester.userId);
+assert.equal(retryCalls, 2);
+
+let inactiveCalls = 0;
+await assert.rejects(
+  loadUserContextWithRetry(
+    { user: { id: requester.userId } },
+    null,
+    {
+      loader: async () => {
+        inactiveCalls += 1;
+        throw new UserContextError("Este usuario está inactivo.", "inactive_user");
+      },
+      delay: async () => {}
+    }
+  ),
+  (error) => error.code === "inactive_user"
+);
+assert.equal(inactiveCalls, 1);
+
+const offlineError = new UserContextError("No se pudo cargar el perfil.", "query_failed");
+offlineError.technical = "TypeError: Failed to fetch";
+const offlineContext = await loadUserContextWithRetry(
+  { user: { id: requester.userId } },
+  { ...requester, displayName: "Requester", organizationId: orgA, locationId: locationA, departmentId: departmentA },
+  {
+    loader: async () => { throw offlineError; },
+    delay: async () => {}
+  }
+);
+assert.equal(offlineContext.userId, requester.userId);
+assert.equal(offlineContext.offline, true);
 
 console.log("Auth and permissions smoke OK");
 

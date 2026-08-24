@@ -61,7 +61,7 @@ import {
   validatePublishableKey
 } from "./supabase.js?v=2.0.0-beta.5";
 import { getSupabaseClient } from "./auth/client.js?v=2.0.0-beta.5";
-import { loadUserContext, selectActiveContext } from "./auth/context.js?v=2.0.0-beta.5";
+import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-beta.5";
 import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-beta.5";
 import {
   onAuthStateChange,
@@ -293,7 +293,7 @@ async function handleLogin(event) {
 async function activateSession(session) {
   try {
     const cachedContext = await loadCachedAuthContext(session.user.id);
-    const context = await loadUserContext(session, cachedContext);
+    const context = await loadUserContextWithRetry(session, cachedContext);
     appSession = session;
     userContext = context;
     await saveCachedAuthContext(context);

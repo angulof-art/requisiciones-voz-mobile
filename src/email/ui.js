@@ -131,7 +131,7 @@ export function createEmailDistributionController(options) {
       ]);
       renderHistory();
       if (!model.configuration.settings.enabled) {
-        elements.featureNotice.textContent = "Envio por correo todavia no configurado.";
+        elements.featureNotice.textContent = "Envío por correo todavía no configurado.";
         elements.featureNotice.hidden = false;
         elements.composeStep.hidden = true;
         elements.previewButton.hidden = true;

@@ -15,6 +15,9 @@ importers:
       fake-indexeddb:
         specifier: 6.2.5
         version: 6.2.5
+      playwright-core:
+        specifier: ^1.62.1
+        version: 1.62.1
       supabase:
         specifier: 2.115.0
         version: 2.115.0
@@ -130,6 +133,11 @@ packages:
   jose@6.2.10:
     resolution: {integrity: sha512-iiW7J9qRFlGxvCOIBDBDxFePQSn7ZMAnrYGhrrOo6siO/MIqwfyilLR27pkfDgUk+raLuzADS8A3S/KLBisc0g==}
 
+  playwright-core@1.62.1:
+    resolution: {integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==}
+    engines: {node: '>=20'}
+    hasBin: true
+
   supabase@2.115.0:
     resolution: {integrity: sha512-8fL9vOd6jOntmU8N5DVlHGE2GWR1r57ulsrOzSyO6IRYq5QMyKie8T8DH+hb+caGhYUVJLvmpY7XYwic60Uafg==}
     hasBin: true
@@ -219,6 +227,8 @@ snapshots:
   iceberg-js@0.8.1: {}
 
   jose@6.2.10: {}
+
+  playwright-core@1.62.1: {}
 
   supabase@2.115.0:
     dependencies:
