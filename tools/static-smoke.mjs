@@ -26,10 +26,17 @@ const required = [
   "src/db/migrate-v10.js",
   "src/storage.js",
   "src/exporters.js",
+  "src/email/permissions.js",
+  "src/email/distribution.js",
+  "src/email/preview.js",
+  "src/email/api.js",
+  "src/email/ui.js",
   "src/supabase.js",
   "vendor/supabase.js",
   "supabase/migrations/202608030001_requisitions.sql",
   "supabase/migrations/202608040003_seed_master_catalog.sql",
+  "supabase/migrations/20260823230508_email_distribution.sql",
+  "supabase/functions/send-requisition-email/index.ts",
   "data/catalogo-productos-maestro.csv",
   "data/catalogo-productos-maestro-resumen.json",
   "data/catalogo-productos-ejemplo.csv",
@@ -61,6 +68,9 @@ assert.equal(index.includes("Revisar pedido"), false);
 assert.ok(index.includes("Responsable del pedido"));
 assert.ok(index.includes("Iniciar sesión"));
 assert.ok(index.includes("Mi perfil"));
+assert.ok(index.includes("Distribución del pedido"));
+assert.ok(index.includes('id="emailButton"'));
+assert.ok(index.includes('id="emailAdminRoot"'));
 assert.ok(index.includes("Organización y accesos"));
 assert.ok(app.includes("SpeechRecognition") && app.includes("es-CR"));
 assert.ok(app.includes("describeSpeechError"));
@@ -102,6 +112,7 @@ assert.ok(sw.includes("catalog-data.js"));
 assert.ok(sw.includes("db/indexeddb.js"));
 assert.ok(sw.includes("db/migrate-v10.js"));
 assert.ok(sw.includes("vendor/supabase.js"));
+assert.ok(sw.includes("src/email/ui.js"));
 assert.ok(app.includes("restoreSession"));
 assert.ok(app.includes("setStorageContext"));
 assert.ok(index.includes("Almacenamiento local"));
