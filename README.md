@@ -39,6 +39,8 @@ migracion segura esta en `V2_IMPLEMENTATION_PLAN.md`.
 - Dashboard operativo para manager/administrator y paginacion del historial.
 - Deteccion de conflictos por revision para evitar sobrescrituras silenciosas.
 - CSP, escaneo de secretos y suite de preparacion para produccion.
+- Modulo opcional de distribucion por correo con grupos configurables, vista
+  previa obligatoria, RLS, Edge Function autenticada e historial de envios.
 - Aviso de nueva version, actualizacion controlada e instalacion cuando el
   navegador ofrece PWA instalable.
 - Migracion SQL para Supabase.
@@ -160,3 +162,7 @@ describe en `docs/AUTH_ROLLBACK.md`.
 La persistencia, conflictos y recuperacion offline se documentan en
 `docs/OFFLINE_AND_SYNC.md`. El informe consolidado de V2 esta en
 `V2_FINAL_IMPLEMENTATION_REPORT.md`.
+
+La distribucion por correo se documenta en `docs/EMAIL_DISTRIBUTION.md`. El
+feature flag permanece apagado hasta configurar un dominio, los secretos del
+proveedor y destinatarios reales desde Administracion.

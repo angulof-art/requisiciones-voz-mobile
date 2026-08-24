@@ -27,6 +27,10 @@ externos, pruebas con Node y migraciones SQL separadas.
 - `src/auth/session.js`: login, restauracion, renovacion, expiracion y logout.
 - `src/auth/context.js`: perfil, organizacion, sede, departamento, roles y permisos.
 - `src/auth/permissions.js`: controles de capacidad y filtro local equivalente a RLS.
+- `src/email/distribution.js`: reglas, destinatarios, deduplicacion y split por grupo.
+- `src/email/preview.js`: asuntos y vista previa HTML escapada.
+- `src/email/api.js`: configuracion RLS e invocacion autenticada de correo.
+- `src/email/ui.js`: formulario, administracion e historial de distribuciones.
 - `src/app.js`: UI, voz, edicion, historial, catalogo y configuracion.
 
 ## Datos
@@ -86,6 +90,13 @@ La politica CSP permite unicamente recursos propios, blobs/datos de exportacion
 y conexiones HTTPS/WSS a Supabase. `tools/security-scan.mjs` rechaza patrones de
 secretos privados y `tools/production-readiness.mjs` verifica volumen,
 exportaciones, CSP, service worker y paginacion.
+
+La distribucion por correo se mantiene desacoplada del flujo de confirmacion.
+La Edge Function `send-requisition-email` usa el JWT del usuario para todas las
+lecturas operativas y solo crea la auditoria con privilegios administrativos
+despues de validar membresia, permiso, organizacion, revision y destinatarios.
+El navegador nunca recibe emails como fuente autoritativa ni secretos del
+proveedor. Los detalles estan en `docs/EMAIL_DISTRIBUTION.md`.
 
 ## Actualizacion PWA
 
