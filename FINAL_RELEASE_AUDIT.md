@@ -166,8 +166,11 @@ trafico. No se eliminaron automaticamente.
 ## 25. Pages deployment
 
 - URL: `https://angulof-art.github.io/requisiciones-voz-mobile/`.
-- La verificacion final compara HTML, modulos, manifest, service worker y version
-  publica con `main` antes de crear el tag de release.
+- Despliegue `32684424157`: SUCCESS sobre `fad0bcb`.
+- Verificados con respuesta HTTP 200: HTML, `src/version.js`, `src/app.js`,
+  manifest y service worker.
+- HTML, modulos y `start_url` publico sirven `2.0.0-rc.1`; la CSP publicada
+  conserva `object-src 'none'` y `base-uri 'self'`.
 
 ## 26. Riesgos restantes
 
