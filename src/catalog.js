@@ -1,4 +1,4 @@
-import { MASTER_CATALOG } from "./catalog-data.js?v=2.0.0-rc.1";
+import { MASTER_CATALOG } from "./catalog-data.js?v=2.0.0-rc.2";
 
 export const UNIT_DEFINITIONS = [
   { canonical: "kg", aliases: ["kg", "kilo", "kilos", "kilogramo", "kilogramos"] },

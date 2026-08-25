@@ -4,8 +4,8 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=2.0.0-rc.1";
-import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.1";
+} from "./catalog.js?v=2.0.0-rc.2";
+import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.2";
 import {
   STATUS,
   addChange,
@@ -23,7 +23,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=2.0.0-rc.1";
+} from "./requisitions.js?v=2.0.0-rc.2";
 import {
   clearCurrentRequisition,
   getStorageDiagnostics,
@@ -39,17 +39,18 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=2.0.0-rc.1";
+} from "./storage.js?v=2.0.0-rc.2";
 import {
   claimLegacyLocalData,
   initializeStorage,
   loadCachedAuthContext,
   saveCachedAuthContext,
   setStorageContext
-} from "./storage.js?v=2.0.0-rc.1";
+} from "./storage.js?v=2.0.0-rc.2";
 import {
   classifySupabaseError,
   fetchProductAliases,
+  fetchRequisitionFromSupabase,
   fetchRequisitionsFromSupabase,
   isSupabaseReady,
   normalizeSupabaseUrl,
@@ -59,27 +60,27 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=2.0.0-rc.1";
-import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.1";
-import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.1";
-import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.1";
+} from "./supabase.js?v=2.0.0-rc.2";
+import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.2";
+import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.2";
+import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.2";
 import {
   onAuthStateChange,
   restoreSession,
   signInWithPassword,
   signOut
-} from "./auth/session.js?v=2.0.0-rc.1";
-import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.1";
-import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.1";
-import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.1";
+} from "./auth/session.js?v=2.0.0-rc.2";
+import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.2";
+import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.2";
+import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.2";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
   resolveRequiredAt,
   transitionRequisition,
   updateItemFulfillment
-} from "./workflow.js?v=2.0.0-rc.1";
-import { APP_VERSION } from "./version.js?v=2.0.0-rc.1";
+} from "./workflow.js?v=2.0.0-rc.2";
+import { APP_VERSION } from "./version.js?v=2.0.0-rc.2";
 
 let state = null;
 let appSession = null;
@@ -311,6 +312,12 @@ async function activateSession(session) {
         getCatalog: () => state?.catalog || [],
         getDepartments: () => userContext?.directoryDepartments || userContext?.departments || [],
         formatDate: (value) => formatDateParts(value, state?.settings?.hourFormat || "24"),
+        refreshRequisition: refreshRequisitionForEmail,
+        isPendingSync: (id) => state?.syncQueue?.some((entry) =>
+          entry.type === "requisition" && entry.payload?.id === id && entry.status !== "synced"
+        ),
+        submitRequisition: confirmOrder,
+        reviewRequisition: () => navigate("review"),
         toast
       });
     }
@@ -967,6 +974,14 @@ async function ensureServerRequisitionNumber() {
   if (!navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
   if (state.current.serverNumberReserved) return;
   try {
+    try {
+      const remote = await fetchRequisitionFromSupabase(state.settings.supabase, state.current.id);
+      state.current.requisitionNumber = remote.requisitionNumber;
+      state.current.serverNumberReserved = true;
+      return;
+    } catch (error) {
+      if (error?.code !== "requisition_not_found") throw error;
+    }
     const result = await reserveRequisitionNumber(state.settings.supabase);
     const number = typeof result === "string" ? result : result?.requisition_number || result?.requisitionNumber;
     if (number) {
@@ -1087,6 +1102,7 @@ async function saveOrderAndQueue() {
   setLocalSaveState("saving");
   try {
     await enqueueLocalSave(async () => {
+      markPendingSync(state.current);
       state.recentNames = await rememberName(state.current.requestedBy, state.recentNames);
       state.requisitions = await upsertRequisition(state.current, state.requisitions);
       state.syncQueue = await queueSyncChange(
@@ -1116,6 +1132,7 @@ async function autoSaveOrder() {
   setLocalSaveState("saving");
   try {
     await enqueueLocalSave(async () => {
+      markPendingSync(state.current);
       state.requisitions = await upsertRequisition(state.current, state.requisitions);
       state.syncQueue = await queueSyncChange(
         "requisition",
@@ -1213,6 +1230,7 @@ async function preserveCurrentOrder() {
   }
   try {
     await enqueueLocalSave(async () => {
+      markPendingSync(state.current);
       state.requisitions = await upsertRequisition(state.current, state.requisitions);
       state.syncQueue = await queueSyncChange(
         "requisition",
@@ -1358,6 +1376,7 @@ async function handleHistoryAction(event) {
     addChange(copy, "duplicar_pedido", requisition, copy);
     state.current = copy;
     try {
+      markPendingSync(copy);
       state.requisitions = await upsertRequisition(copy, state.requisitions);
       state.syncQueue = await queueSyncChange("requisition", { id: copy.id }, state.syncQueue);
     } catch (error) {
@@ -1377,6 +1396,7 @@ async function handleHistoryAction(event) {
     if (!window.confirm("¿Anular este pedido sin eliminarlo definitivamente?")) return;
     markVoided(requisition);
     try {
+      markPendingSync(requisition);
       state.requisitions = await upsertRequisition(requisition, state.requisitions);
       state.syncQueue = await queueSyncChange(
         "requisition",
@@ -1450,6 +1470,7 @@ async function handleInboxAction(event) {
 }
 
 async function persistWorkflowRequisition(requisition) {
+  markPendingSync(requisition);
   state.requisitions = await upsertRequisition(requisition, state.requisitions);
   state.syncQueue = await queueSyncChange("requisition", { id: requisition.id }, state.syncQueue);
   if (state.current.id === requisition.id) {
@@ -1620,9 +1641,7 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
     }
     const syncedCurrent = state.requisitions.find((requisition) => requisition.id === state.current.id);
     if (syncedCurrent) {
-      state.current.lastSyncedRevision = syncedCurrent.lastSyncedRevision;
-      state.current.lastSyncedAt = syncedCurrent.lastSyncedAt;
-      state.current.syncStatus = syncedCurrent.syncStatus;
+      state.current = clone(syncedCurrent);
     }
     await saveRequisitions(state.requisitions);
     await persistCurrent();
@@ -1651,8 +1670,7 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
           (requisition) => requisition.id === state.current.id
         );
         if (partiallySyncedCurrent) {
-          state.current.lastSyncedRevision = partiallySyncedCurrent.lastSyncedRevision;
-          state.current.lastSyncedAt = partiallySyncedCurrent.lastSyncedAt;
+          state.current = clone(partiallySyncedCurrent);
         }
         await saveRequisitions(state.requisitions);
         await persistCurrent();
@@ -1737,6 +1755,25 @@ async function refreshHistoryFromSupabase() {
   state.requisitions = merged;
   await saveRequisitions(state.requisitions);
   renderHistory();
+}
+
+async function refreshRequisitionForEmail(requisitionId) {
+  const pending = state.syncQueue.some((entry) =>
+    entry.type === "requisition" && entry.payload?.id === requisitionId && entry.status !== "synced"
+  );
+  if (pending) {
+    const error = new Error("Este pedido todavía está pendiente de sincronización. Espere a que termine antes de enviarlo por correo.");
+    error.code = "sync_pending";
+    throw error;
+  }
+  const remote = await fetchRequisitionFromSupabase(state.settings.supabase, requisitionId);
+  state.requisitions = await upsertRequisition(remote, state.requisitions);
+  if (state.current.id === requisitionId) {
+    state.current = clone(remote);
+    await persistCurrent();
+  }
+  render();
+  return clone(remote);
 }
 
 function setupSpeechRecognition() {
@@ -2396,6 +2433,10 @@ function populateUnitSelects() {
 
 async function persistCurrent() {
   await saveCurrentRequisition(state.current);
+}
+
+function markPendingSync(requisition) {
+  requisition.syncStatus = "pending";
 }
 
 async function persistCurrentSafely() {

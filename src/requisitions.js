@@ -1,10 +1,10 @@
-import { productAllowsUnit } from "./catalog.js?v=2.0.0-rc.1";
+import { productAllowsUnit } from "./catalog.js?v=2.0.0-rc.2";
 import {
   WORKFLOW_STATUS,
   normalizeFulfillmentFields,
   normalizeWorkflowFields,
   transitionRequisition
-} from "./workflow.js?v=2.0.0-rc.1";
+} from "./workflow.js?v=2.0.0-rc.2";
 
 export const STATUS = WORKFLOW_STATUS;
 
@@ -79,15 +79,28 @@ export function normalizeRequisition(requisition) {
     ...normalizeWorkflowFields(requisition),
     status: requisition.status || "draft",
     originalTranscript: requisition.originalTranscript || requisition.original_transcript || "",
-    items: (requisition.items || []).map(normalizeItem),
+    items: dedupeRequisitionItemsById((requisition.items || []).map(normalizeItem)),
     changes: normalizeChanges(requisition.changes || []),
     createdAt: requisition.createdAt || requisition.created_at || now,
     updatedAt: requisition.updatedAt || requisition.updated_at || now,
     confirmedAt: requisition.confirmedAt || requisition.confirmed_at || "",
     exportedAt: requisition.exportedAt || requisition.exported_at || "",
     syncStatus: requisition.syncStatus || "local",
+    serverNumberReserved: Boolean(requisition.serverNumberReserved || requisition.server_number_reserved),
     deviceInfo: requisition.deviceInfo || requisition.device_info || getDeviceInfo()
   };
+}
+
+export function dedupeRequisitionItemsById(items = []) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const id = String(item?.id || "");
+    if (!id || !seen.has(id)) {
+      if (id) seen.add(id);
+      return true;
+    }
+    return false;
+  });
 }
 
 export function isMeaningfulRequisition(requisition) {

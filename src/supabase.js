@@ -1,4 +1,4 @@
-import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.1";
+import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.2";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
@@ -130,9 +130,10 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog) 
   if (activeContext?.permissions?.includes("catalog.manage")) {
     await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
   }
-  const { rename, syncRevision, syncUpdatedAt } = await upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId);
-  requisition.lastSyncedRevision = syncRevision || requisition.revisionNumber;
-  requisition.lastSyncedAt = syncUpdatedAt || new Date().toISOString();
+  const { rename, remote } = await upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId);
+  applyCanonicalRequisitionFields(requisition, remote);
+  requisition.lastSyncedRevision = requisition.revisionNumber;
+  requisition.lastSyncedAt = requisition.updatedAt || new Date().toISOString();
   requisition.syncStatus = "pending";
   await supabaseRequest(settings, "requisition_items", {
     method: "DELETE",
@@ -212,11 +213,62 @@ export async function fetchRequisitionsFromSupabase(settings) {
       ...row,
       lastSyncedRevision: row.revision_number,
       lastSyncedAt: row.updated_at,
+      serverNumberReserved: true,
       items: itemsByRequisition.get(row.id) || [],
       changes: changesByRequisition.get(row.id) || [],
       syncStatus: "synced"
     })
   );
+}
+
+export async function fetchRequisitionFromSupabase(settings, requisitionId) {
+  if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
+  if (!activeContext?.organizationId) throw new Error("Falta el contexto de organización.");
+  const rows = await supabaseRequest(settings, "requisitions", {
+    query: [
+      "select=*",
+      `id=eq.${encodeURIComponent(requisitionId)}`,
+      `organization_id=eq.${encodeURIComponent(activeContext.organizationId)}`,
+      "limit=1"
+    ].join("&")
+  });
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) {
+    const error = new Error("El pedido ya no está disponible en Supabase.");
+    error.code = "requisition_not_found";
+    throw error;
+  }
+  const [items, changes] = await Promise.all([
+    supabaseRequest(settings, "requisition_items", {
+      query: `select=*&requisition_id=eq.${encodeURIComponent(requisitionId)}&order=sort_order.asc`
+    }),
+    supabaseRequest(settings, "requisition_changes", {
+      query: `select=*&requisition_id=eq.${encodeURIComponent(requisitionId)}&order=changed_at.desc&limit=100`
+    })
+  ]);
+  return normalizeRequisition({
+    ...row,
+    items: items || [],
+    changes: changes || [],
+    lastSyncedRevision: row.revision_number,
+    lastSyncedAt: row.updated_at,
+    syncStatus: "synced",
+    serverNumberReserved: true
+  });
+}
+
+export function applyCanonicalRequisitionFields(requisition, remoteRow) {
+  if (!requisition || !remoteRow) return requisition;
+  requisition.requisitionNumber = remoteRow.requisition_number || remoteRow.requisitionNumber || requisition.requisitionNumber;
+  requisition.revisionNumber = Math.max(1, Number(remoteRow.revision_number || remoteRow.revisionNumber) || requisition.revisionNumber || 1);
+  requisition.status = remoteRow.status || requisition.status;
+  requisition.updatedAt = remoteRow.updated_at || remoteRow.updatedAt || requisition.updatedAt;
+  requisition.departmentId = remoteRow.department_id ?? remoteRow.departmentId ?? requisition.departmentId;
+  requisition.destinationDepartmentId = remoteRow.destination_department_id ?? remoteRow.destinationDepartmentId ?? requisition.destinationDepartmentId;
+  requisition.requiredAt = remoteRow.required_at ?? remoteRow.requiredAt ?? requisition.requiredAt;
+  requisition.priority = remoteRow.priority || requisition.priority;
+  requisition.serverNumberReserved = true;
+  return requisition;
 }
 
 function groupRowsByRequisition(rows, allowedIds) {
@@ -244,6 +296,13 @@ export function makeConflictSafeRequisitionNumber(requisition, now = new Date(),
 
 async function upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId) {
   let rename = null;
+  const existingRemote = await findRequisitionById(settings, requisition.id);
+  if (existingRemote?.requisition_number && existingRemote.requisition_number !== requisition.requisitionNumber) {
+    rename = recordCanonicalNumber(requisition, existingRemote.requisition_number);
+  }
+  if (existingRemote?.revision_number && !requisition.lastSyncedRevision) {
+    requisition.lastSyncedRevision = Number(existingRemote.revision_number);
+  }
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const owner = await findRequisitionNumberOwner(
       settings,
@@ -251,7 +310,7 @@ async function upsertRequisitionWithUniqueNumber(settings, requisition, workspac
       requisition.requisitionNumber
     );
     if (owner && owner.id !== requisition.id) {
-      rename = renameRequisitionAfterConflict(requisition, rename, attempt);
+      rename = recordCanonicalNumber(requisition, await reserveCanonicalNumber(settings), rename);
     }
 
     try {
@@ -261,21 +320,21 @@ async function upsertRequisitionWithUniqueNumber(settings, requisition, workspac
         requisition.revisionNumber = row.revision_number;
         const updated = await supabaseRequest(settings, "requisitions", {
           method: "PATCH",
-          query: `id=eq.${encodeURIComponent(requisition.id)}&revision_number=eq.${encodeURIComponent(requisition.lastSyncedRevision)}&select=revision_number,updated_at`,
+          query: `id=eq.${encodeURIComponent(requisition.id)}&revision_number=eq.${encodeURIComponent(requisition.lastSyncedRevision)}&select=${canonicalRequisitionSelect()}`,
           prefer: "return=representation",
           body: row
         });
         if (!updated?.length) throw createSyncConflictError(requisition);
-        return { rename, syncRevision: updated[0].revision_number, syncUpdatedAt: updated[0].updated_at };
+        return { rename, remote: updated[0] };
       }
-      await upsertRows(settings, "requisitions", [row]);
-      return { rename, syncRevision: row.revision_number, syncUpdatedAt: row.updated_at };
+      const inserted = await upsertRequisitionRow(settings, row);
+      return { rename, remote: inserted || row };
     } catch (error) {
       if (!isDuplicateRequisitionNumberError(error) || attempt === 3) throw error;
-      rename = renameRequisitionAfterConflict(requisition, rename, attempt + 1);
+      rename = recordCanonicalNumber(requisition, await reserveCanonicalNumber(settings), rename);
     }
   }
-  return { rename, syncRevision: requisition.revisionNumber, syncUpdatedAt: requisition.updatedAt };
+  return { rename, remote: requisitionToRow(requisition, workspaceId) };
 }
 
 function createSyncConflictError(requisition) {
@@ -297,15 +356,45 @@ async function findRequisitionNumberOwner(settings, workspaceId, requisitionNumb
   return Array.isArray(rows) ? rows[0] || null : null;
 }
 
-function renameRequisitionAfterConflict(requisition, existingRename, attempt) {
+async function findRequisitionById(settings, requisitionId) {
+  const rows = await supabaseRequest(settings, "requisitions", {
+    query: `select=${canonicalRequisitionSelect()}&id=eq.${encodeURIComponent(requisitionId)}&organization_id=eq.${encodeURIComponent(activeContext?.organizationId || "")}&limit=1`
+  });
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+function canonicalRequisitionSelect() {
+  return "id,requisition_number,revision_number,status,updated_at,department_id,destination_department_id,required_at,priority";
+}
+
+async function upsertRequisitionRow(settings, row) {
+  const rows = await supabaseRequest(settings, "requisitions", {
+    method: "POST",
+    query: `on_conflict=id&select=${canonicalRequisitionSelect()}`,
+    prefer: "resolution=merge-duplicates,return=representation",
+    body: [row]
+  });
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function reserveCanonicalNumber(settings) {
+  const reserved = await reserveRequisitionNumber(settings);
+  const number = typeof reserved === "string"
+    ? reserved
+    : reserved?.requisition_number || reserved?.requisitionNumber;
+  if (!number) throw new Error("Supabase no pudo asignar un número único al pedido.");
+  return number;
+}
+
+function recordCanonicalNumber(requisition, nextNumber, existingRename = null) {
   const previousNumber = requisition.requisitionNumber;
-  const nextNumber = makeConflictSafeRequisitionNumber(requisition, new Date(), attempt);
+  if (!nextNumber || nextNumber === previousNumber) return existingRename;
   requisition.requisitionNumber = nextNumber;
   requisition.updatedAt = new Date().toISOString();
   requisition.changes = requisition.changes || [];
   requisition.changes.unshift({
     id: createSyncChangeId(),
-    action: "numero_ajustado_por_sincronizacion",
+    action: "numero_canonico_asignado",
     previousValue: { requisitionNumber: previousNumber },
     newValue: { requisitionNumber: nextNumber },
     changedAt: requisition.updatedAt,

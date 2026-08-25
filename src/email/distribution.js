@@ -133,7 +133,12 @@ export function validateDistribution({
   if (!permissions.includes("email.send")) errors.push("No tiene permiso para enviar correos.");
   if (!requisition?.id) errors.push("La requisicion no existe.");
   if (UNSENDABLE_STATUSES.has(requisition?.status)) {
-    errors.push("Guarde y envie la requisicion antes de distribuirla por correo.");
+    errors.push({
+      draft: "Este pedido todavía es un borrador. Envíe primero el pedido antes de distribuirlo por correo.",
+      review: "Este pedido todavía está en revisión. Complete el envío del pedido antes de distribuirlo por correo.",
+      voided: "Este pedido está anulado y no puede enviarse por correo.",
+      rejected: "Este pedido fue rechazado y no puede enviarse por correo."
+    }[requisition.status]);
   }
   if (requisition?.syncStatus !== "synced" && !requisition?.lastSyncedAt) {
     errors.push("Sincronice la requisicion antes de enviarla por correo.");

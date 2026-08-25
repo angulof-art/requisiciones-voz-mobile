@@ -11,9 +11,11 @@ import {
   setRecipientSelected,
   splitItemsByDistribution,
   validateDistribution
-} from "./distribution.js?v=2.0.0-rc.1";
-import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.1";
+} from "./distribution.js?v=2.0.0-rc.2";
+import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.2";
+import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.2";
 import {
+  emailErrorMessage,
   loadEmailConfiguration,
   loadEmailSendHistory,
   saveDistributionGroup,
@@ -21,13 +23,14 @@ import {
   saveEmailRecipient,
   saveEmailSettings,
   saveGroupRecipients,
-  sendRequisitionEmail
-} from "./api.js?v=2.0.0-rc.1";
+  sendRequisitionEmail,
+  unsendableStatusMessage
+} from "./api.js?v=2.0.0-rc.2";
 import {
   EMAIL_PERMISSIONS,
   canManageEmailDistribution,
   hasEmailPermission
-} from "./permissions.js?v=2.0.0-rc.1";
+} from "./permissions.js?v=2.0.0-rc.2";
 
 export function createEmailDistributionController(options) {
   const elements = collectElements();
@@ -53,7 +56,7 @@ export function createEmailDistributionController(options) {
   };
 
   function bindEvents() {
-    elements.emailButton.addEventListener("click", () => open(options.getCurrentRequisition()));
+    elements.emailButton.addEventListener("click", handlePrimaryAction);
     elements.closeButton.addEventListener("click", closeDialog);
     elements.cancelButton.addEventListener("click", closeDialog);
     elements.backButton.addEventListener("click", showComposeStep);
@@ -97,19 +100,56 @@ export function createEmailDistributionController(options) {
 
   function renderCurrent(requisition) {
     const context = options.getContext();
-    const visible = canOfferEmail(context, requisition);
-    elements.emailButton.hidden = !visible;
-    elements.emailButton.disabled = !navigator.onLine || requisition?.syncStatus !== "synced";
-    elements.emailButton.title = !navigator.onLine
-      ? "El envio por correo necesita conexion."
-      : requisition?.syncStatus !== "synced" ? "Sincronice el pedido antes de enviarlo por correo." : "";
+    const permitted = hasEmailPermission(context, EMAIL_PERMISSIONS.send) && Boolean(context?.organizationId);
+    const status = requisition?.status || "draft";
+    elements.emailButton.hidden = !permitted;
+    elements.emailButton.textContent = status === "draft"
+      ? "Enviar pedido"
+      : status === "review" ? "Revisar pedido" : "Enviar por correo";
+    const blockedStatus = ["voided", "rejected"].includes(status);
+    const emailUnavailable = !["draft", "review"].includes(status)
+      && (!navigator.onLine || requisition?.syncStatus !== "synced");
+    elements.emailButton.disabled = blockedStatus || emailUnavailable;
+    elements.emailButton.title = blockedStatus
+      ? unsendableStatusMessage(status)
+      : !navigator.onLine && !["draft", "review"].includes(status)
+        ? "El envío por correo necesita conexión."
+        : emailUnavailable ? "Sincronice el pedido antes de enviarlo por correo." : "";
+  }
+
+  async function handlePrimaryAction() {
+    const requisition = options.getCurrentRequisition();
+    if (requisition?.status === "draft") return options.submitRequisition?.();
+    if (requisition?.status === "review") {
+      options.toast(unsendableStatusMessage("review"));
+      return options.reviewRequisition?.();
+    }
+    return open(requisition);
   }
 
   async function open(requisition) {
     const context = options.getContext();
-    if (!canOfferEmail(context, requisition)) return options.toast("Este pedido no esta listo para enviarse por correo.");
+    if (!hasEmailPermission(context, EMAIL_PERMISSIONS.send) || !context?.organizationId) {
+      return options.toast("No tiene permiso para enviar correos.");
+    }
     if (!navigator.onLine) return options.toast("El envio por correo necesita conexion.");
-    model.requisition = enrichRequisition(requisition, options.getCatalog());
+    if (["draft", "review", "voided", "rejected"].includes(requisition?.status)) {
+      return options.toast(unsendableStatusMessage(requisition.status));
+    }
+    if (options.isPendingSync?.(requisition?.id)) {
+      return options.toast("Este pedido todavía está pendiente de sincronización. Espere a que termine antes de enviarlo por correo.");
+    }
+    let refreshed;
+    try {
+      refreshed = await options.refreshRequisition(requisition.id);
+    } catch (error) {
+      return options.toast(friendlyError(error, "No se pudo actualizar el pedido antes de preparar el correo."));
+    }
+    if (["draft", "review", "voided", "rejected"].includes(refreshed.status)) {
+      return options.toast(unsendableStatusMessage(refreshed.status));
+    }
+    if (!canOfferEmail(context, refreshed)) return options.toast("Este pedido no está listo para enviarse por correo.");
+    model.requisition = enrichRequisition(refreshed, options.getCatalog());
     model.externalRecipients = [];
     model.previews = [];
     model.operationIds.clear();
@@ -127,7 +167,7 @@ export function createEmailDistributionController(options) {
     try {
       [model.configuration, model.sends] = await Promise.all([
         loadEmailConfiguration(context.organizationId),
-        loadEmailSendHistory(requisition.id)
+        loadEmailSendHistory(refreshed.id)
       ]);
       renderHistory();
       if (!model.configuration.settings.enabled) {
@@ -345,10 +385,25 @@ export function createEmailDistributionController(options) {
     ));
     const forceResend = duplicates.length > 0;
     if (forceResend && !window.confirm("Esta revision ya fue enviada a uno de los grupos. ¿Desea reenviar y guardar una nueva auditoria?")) return;
-    model.sending = true;
+    if (!acquireEmailSendLock(model)) return;
     elements.sendButton.disabled = true;
-    elements.sendButton.textContent = "Enviando...";
+    elements.sendButton.textContent = "Enviando correo…";
     try {
+      const refreshed = await options.refreshRequisition(model.requisition.id);
+      const previewIsStale = Number(refreshed.revisionNumber) !== Number(model.requisition.revisionNumber)
+        || refreshed.requisitionNumber !== model.requisition.requisitionNumber
+        || refreshed.status !== model.requisition.status;
+      model.requisition = enrichRequisition(refreshed, options.getCatalog());
+      if (["draft", "review", "voided", "rejected"].includes(refreshed.status)) {
+        model.previews = [];
+        showComposeStep();
+        return showErrors([unsendableStatusMessage(refreshed.status)]);
+      }
+      if (previewIsStale) {
+        model.previews = [];
+        showComposeStep();
+        return showErrors([emailErrorMessage("revision_changed")]);
+      }
       const results = [];
       for (const entry of model.previews) {
         const configuredIds = new Set(entry.selection.recipients.map((recipient) => recipient.id));
@@ -370,12 +425,27 @@ export function createEmailDistributionController(options) {
       }
       model.sends = await loadEmailSendHistory(model.requisition.id);
       renderHistory();
-      options.toast(results.length === 1 ? "Correo enviado." : `${results.length} correos enviados.`);
+      const recipientCount = results.reduce((total, result) => total + Number(result?.recipientCount || 0), 0);
+      options.toast(`Correo enviado correctamente a ${recipientCount} destinatario(s).`);
       closeDialog();
     } catch (error) {
-      showErrors([friendlyError(error, "No se pudo enviar el correo.")]);
+      let message = friendlyError(error, "No se pudo enviar el correo.");
+      if (["revision_changed", "requisition_not_sendable"].includes(error?.code)) {
+        try {
+          const refreshed = await options.refreshRequisition(model.requisition.id);
+          model.requisition = enrichRequisition(refreshed, options.getCatalog());
+          if (["draft", "review", "voided", "rejected"].includes(refreshed.status)) {
+            message = unsendableStatusMessage(refreshed.status);
+          }
+        } catch (refreshError) {
+          console.error("No se pudo refrescar el pedido después del rechazo del correo.", refreshError);
+        }
+        model.previews = [];
+        showComposeStep();
+      }
+      showErrors([message]);
     } finally {
-      model.sending = false;
+      releaseEmailSendLock(model);
       elements.sendButton.disabled = false;
       elements.sendButton.textContent = model.previews.length > 1 ? "Enviar correos" : "Enviar correo";
     }
@@ -628,6 +698,16 @@ export function createEmailDistributionController(options) {
   }
 }
 
+export function acquireEmailSendLock(model) {
+  if (model?.sending) return false;
+  model.sending = true;
+  return true;
+}
+
+export function releaseEmailSendLock(model) {
+  if (model) model.sending = false;
+}
+
 function canOfferEmail(context, requisition) {
   return Boolean(
     hasEmailPermission(context, EMAIL_PERMISSIONS.send)
@@ -640,7 +720,7 @@ function enrichRequisition(requisition, catalog) {
   const products = catalog || [];
   return {
     ...requisition,
-    items: (requisition.items || []).map((item) => {
+    items: dedupeRequisitionItemsById(requisition.items || []).map((item) => {
       const product = products.find((entry) =>
         (item.productId && entry.id === item.productId) || (item.productCode && entry.code === item.productCode)
       );
@@ -717,7 +797,7 @@ function recipientTypeOptions() {
 
 function friendlyError(error, fallback) {
   const message = String(error?.message || "");
-  if (message.includes("FunctionsHttpError")) return "El servicio de correo rechazo la solicitud.";
+  if (error?.isSafeForUser || ["sync_pending", "requisition_not_found"].includes(error?.code)) return message;
   if (message.includes("Failed to fetch")) return "No hay conexion con el servicio de correo.";
-  return message && message.length < 220 ? message : fallback;
+  return fallback;
 }

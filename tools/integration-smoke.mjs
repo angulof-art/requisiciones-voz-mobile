@@ -196,11 +196,27 @@ const originalFetch = globalThis.fetch;
 const requests = [];
 globalThis.fetch = async (url, options = {}) => {
   requests.push({ url: String(url), options });
+  if (String(url).includes("/rpc/next_requisition_number")) {
+    return new Response(JSON.stringify("REQ-20260804-0042"), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
   if (options.method === "GET" || !options.method) {
+    if (String(url).includes(`id=eq.${conflictRequisition.id}`)) {
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     return new Response(
       JSON.stringify([{ id: "req-remota", requisition_number: "REQ-20260804-0001" }]),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
+  }
+  if (options.method === "POST" && String(url).includes("/requisitions?")) {
+    const [row] = JSON.parse(options.body);
+    return new Response(JSON.stringify([row]), {
+      status: 201,
+      headers: { "Content-Type": "application/json" }
+    });
   }
   return new Response(null, { status: 204 });
 };
@@ -216,7 +232,7 @@ const conflictResult = await syncRequisitionToSupabase(
 );
 globalThis.fetch = originalFetch;
 assert.ok(conflictResult.rename);
-assert.notEqual(conflictRequisition.requisitionNumber, "REQ-20260804-0001");
+assert.equal(conflictRequisition.requisitionNumber, "REQ-20260804-0042");
 assert.equal(conflictResult.rename.requisitionNumber, conflictRequisition.requisitionNumber);
 assert.ok(
   requests.some(
