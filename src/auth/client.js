@@ -1,4 +1,4 @@
-import { PUBLIC_APP_CONFIG } from "../config.js?v=2.0.0-rc.2";
+import { PUBLIC_APP_CONFIG } from "../config.js?v=2.0.0-rc.3";
 
 let client = null;
 
@@ -15,7 +15,7 @@ export function getSupabaseClient() {
       storageKey: "pedidos-voz-auth-v1"
     },
     global: {
-      headers: { "X-Client-Info": "requisiciones-voz-mobile/2.0.0-rc.2" }
+      headers: { "X-Client-Info": "requisiciones-voz-mobile/2.0.0-rc.3" }
     }
   });
   return client;

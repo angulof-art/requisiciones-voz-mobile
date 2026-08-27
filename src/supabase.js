@@ -1,4 +1,5 @@
-import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.2";
+import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.3";
+import { canTransition } from "./workflow.js?v=2.0.0-rc.3";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
@@ -124,13 +125,18 @@ export async function fetchProductAliases(settings) {
   return Object.fromEntries((rows || []).map((row) => [row.normalized_phrase, row.product_id]));
 }
 
-export async function syncRequisitionToSupabase(settings, requisition, catalog) {
+export async function syncRequisitionToSupabase(settings, requisition, catalog, options = {}) {
   if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
   const workspaceId = settings.workspaceId || "main";
   if (activeContext?.permissions?.includes("catalog.manage")) {
     await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
   }
-  const { rename, remote } = await upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId);
+  const { rename, remote, reconciliation } = await upsertRequisitionWithUniqueNumber(
+    settings,
+    requisition,
+    workspaceId,
+    options
+  );
   applyCanonicalRequisitionFields(requisition, remote);
   requisition.lastSyncedRevision = requisition.revisionNumber;
   requisition.lastSyncedAt = requisition.updatedAt || new Date().toISOString();
@@ -151,25 +157,36 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog) 
       "requisition_changes",
       requisition.changes
         .filter((change) => !change.changedByUserId || change.changedByUserId === activeContext?.userId)
+        .filter((change) => !isSupersededWorkflowChange(change, reconciliation))
         .map((change) => changeToRow(change, requisition.id, workspaceId))
     );
   }
   requisition.syncStatus = "synced";
-  return { rename };
+  return { rename, reconciliation };
 }
 
-export async function syncAllToSupabase(settings, requisitions, catalog) {
+export async function syncAllToSupabase(settings, requisitions, catalog, options = {}) {
   if (!isSupabaseReady(settings)) throw new Error("Supabase no esta configurado.");
   const workspaceId = settings.workspaceId || "main";
   if (activeContext?.permissions?.includes("catalog.manage")) {
     await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
   }
   const renames = [];
+  const reconciliations = [];
+  const queueEntries = new Map(
+    (options.queueEntries || [])
+      .filter((entry) => entry.type === "requisition" && entry.payload?.id)
+      .map((entry) => [entry.payload.id, entry])
+  );
   for (const requisition of requisitions) {
-    const result = await syncRequisitionToSupabase(settings, requisition, []);
+    const queueEntry = queueEntries.get(requisition.id);
+    const result = await syncRequisitionToSupabase(settings, requisition, [], {
+      workflowTransitions: queueEntry?.payload?.workflowTransitions || []
+    });
     if (result.rename) renames.push(result.rename);
+    if (result.reconciliation) reconciliations.push(result.reconciliation);
   }
-  return { renames };
+  return { renames, reconciliations };
 }
 
 export async function fetchRequisitionsFromSupabase(settings) {
@@ -267,8 +284,23 @@ export function applyCanonicalRequisitionFields(requisition, remoteRow) {
   requisition.destinationDepartmentId = remoteRow.destination_department_id ?? remoteRow.destinationDepartmentId ?? requisition.destinationDepartmentId;
   requisition.requiredAt = remoteRow.required_at ?? remoteRow.requiredAt ?? requisition.requiredAt;
   requisition.priority = remoteRow.priority || requisition.priority;
+  applyCanonicalTimestamp(requisition, remoteRow, "submittedAt", "submitted_at");
+  applyCanonicalTimestamp(requisition, remoteRow, "receivedAt", "received_at");
+  applyCanonicalTimestamp(requisition, remoteRow, "preparingAt", "preparing_at");
+  applyCanonicalTimestamp(requisition, remoteRow, "deliveredAt", "delivered_at");
+  applyCanonicalTimestamp(requisition, remoteRow, "acceptedAt", "accepted_at");
+  applyCanonicalTimestamp(requisition, remoteRow, "closedAt", "closed_at");
+  applyCanonicalTimestamp(requisition, remoteRow, "rejectedAt", "rejected_at");
   requisition.serverNumberReserved = true;
   return requisition;
+}
+
+function applyCanonicalTimestamp(requisition, remoteRow, camelName, snakeName) {
+  if (Object.prototype.hasOwnProperty.call(remoteRow, snakeName)) {
+    requisition[camelName] = remoteRow[snakeName] || "";
+  } else if (Object.prototype.hasOwnProperty.call(remoteRow, camelName)) {
+    requisition[camelName] = remoteRow[camelName] || "";
+  }
 }
 
 function groupRowsByRequisition(rows, allowedIds) {
@@ -294,14 +326,27 @@ export function makeConflictSafeRequisitionNumber(requisition, now = new Date(),
   return `REQ-${datePart}-${timePart}-${idPart}${retryPart}`;
 }
 
-async function upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId) {
+async function upsertRequisitionWithUniqueNumber(settings, requisition, workspaceId, options = {}) {
   let rename = null;
-  const existingRemote = await findRequisitionById(settings, requisition.id);
+  let reconciliation = null;
+  let transitionRecoveryAttempted = false;
+  let existingRemote = await findRequisitionById(settings, requisition.id);
   if (existingRemote?.requisition_number && existingRemote.requisition_number !== requisition.requisitionNumber) {
     rename = recordCanonicalNumber(requisition, existingRemote.requisition_number);
   }
-  if (existingRemote?.revision_number && !requisition.lastSyncedRevision) {
-    requisition.lastSyncedRevision = Number(existingRemote.revision_number);
+  if (existingRemote) {
+    const workflowSequence = resolveWorkflowSequence(
+      existingRemote.status,
+      requisition.status,
+      options.workflowTransitions
+    );
+    if (workflowSequence?.length) {
+      existingRemote = await applyWorkflowSequence(settings, requisition, existingRemote, workflowSequence);
+    } else if (existingRemote.status !== requisition.status && !canTransition(existingRemote.status, requisition.status)) {
+      reconciliation = reconcileRequisitionCanonicalState(requisition, existingRemote);
+    } else if (existingRemote.revision_number && !requisition.lastSyncedRevision) {
+      requisition.lastSyncedRevision = Number(existingRemote.revision_number);
+    }
   }
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const owner = await findRequisitionNumberOwner(
@@ -325,16 +370,111 @@ async function upsertRequisitionWithUniqueNumber(settings, requisition, workspac
           body: row
         });
         if (!updated?.length) throw createSyncConflictError(requisition);
-        return { rename, remote: updated[0] };
+        return { rename, remote: updated[0], reconciliation };
       }
       const inserted = await upsertRequisitionRow(settings, row);
-      return { rename, remote: inserted || row };
+      return { rename, remote: inserted || row, reconciliation };
     } catch (error) {
+      if (isRequisitionTransitionError(error) && !transitionRecoveryAttempted) {
+        transitionRecoveryAttempted = true;
+        const currentRemote = await findRequisitionById(settings, requisition.id);
+        if (currentRemote) {
+          const workflowSequence = resolveWorkflowSequence(
+            currentRemote.status,
+            requisition.status,
+            options.workflowTransitions
+          );
+          if (workflowSequence?.length) {
+            existingRemote = await applyWorkflowSequence(settings, requisition, currentRemote, workflowSequence);
+          } else {
+            reconciliation = reconcileRequisitionCanonicalState(requisition, currentRemote);
+            existingRemote = currentRemote;
+          }
+          continue;
+        }
+      }
       if (!isDuplicateRequisitionNumberError(error) || attempt === 3) throw error;
       rename = recordCanonicalNumber(requisition, await reserveCanonicalNumber(settings), rename);
     }
   }
-  return { rename, remote: requisitionToRow(requisition, workspaceId) };
+  return { rename, remote: requisitionToRow(requisition, workspaceId), reconciliation };
+}
+
+export function reconcileRequisitionCanonicalState(requisition, remoteRow) {
+  const previousStatus = requisition.status;
+  applyCanonicalRequisitionFields(requisition, remoteRow);
+  requisition.lastSyncedRevision = Math.max(
+    1,
+    Number(remoteRow.revision_number || remoteRow.revisionNumber) || requisition.revisionNumber || 1
+  );
+  requisition.lastSyncedAt = remoteRow.updated_at || remoteRow.updatedAt || requisition.lastSyncedAt || "";
+  requisition.syncStatus = "pending";
+  return {
+    id: requisition.id,
+    previousStatus,
+    status: requisition.status,
+    revisionNumber: requisition.revisionNumber
+  };
+}
+
+export function resolveWorkflowSequence(remoteStatus, localStatus, transitions = []) {
+  const normalized = transitions
+    .map((entry) => ({
+      from: String(entry?.from || ""),
+      to: String(entry?.to || ""),
+      changedAt: String(entry?.changedAt || "")
+    }))
+    .filter((entry) => entry.from && entry.to && entry.from !== entry.to);
+  if (!normalized.length || remoteStatus === localStatus) return null;
+
+  let startIndex = normalized.findIndex((entry) => entry.from === remoteStatus);
+  if (startIndex < 0) {
+    const appliedIndex = normalized.map((entry) => entry.to).lastIndexOf(remoteStatus);
+    startIndex = appliedIndex >= 0 ? appliedIndex + 1 : -1;
+  }
+  if (startIndex < 0 || startIndex >= normalized.length) return null;
+
+  const sequence = normalized.slice(startIndex);
+  let current = remoteStatus;
+  for (const entry of sequence) {
+    if (entry.from !== current || !canTransition(current, entry.to)) return null;
+    current = entry.to;
+  }
+  return current === localStatus ? sequence : null;
+}
+
+async function applyWorkflowSequence(settings, requisition, remoteRow, sequence) {
+  let canonical = remoteRow;
+  for (const transition of sequence) {
+    const previousRevision = Math.max(1, Number(canonical.revision_number) || 1);
+    const updated = await supabaseRequest(settings, "requisitions", {
+      method: "PATCH",
+      query: `id=eq.${encodeURIComponent(requisition.id)}&revision_number=eq.${encodeURIComponent(previousRevision)}&select=${canonicalRequisitionSelect()}`,
+      prefer: "return=representation",
+      body: {
+        status: transition.to,
+        revision_number: previousRevision + 1,
+        updated_at: transition.changedAt || new Date().toISOString()
+      }
+    });
+    if (!updated?.length) throw createSyncConflictError(requisition);
+    canonical = updated[0];
+    applyCanonicalRequisitionFields(requisition, canonical);
+    requisition.lastSyncedRevision = requisition.revisionNumber;
+    requisition.lastSyncedAt = requisition.updatedAt;
+  }
+  return canonical;
+}
+
+export function isRequisitionTransitionError(error) {
+  const technical = String(error?.technical || error?.message || "").toLowerCase();
+  return technical.includes("invalid requisition transition");
+}
+
+function isSupersededWorkflowChange(change, reconciliation) {
+  if (!reconciliation || !String(change?.action || "").startsWith("flujo_")) return false;
+  const changedStatus = change?.newValue?.status ?? change?.new_value?.status;
+  return changedStatus === reconciliation.previousStatus && changedStatus !== reconciliation.status;
 }
 
 function createSyncConflictError(requisition) {
@@ -364,7 +504,24 @@ async function findRequisitionById(settings, requisitionId) {
 }
 
 function canonicalRequisitionSelect() {
-  return "id,requisition_number,revision_number,status,updated_at,department_id,destination_department_id,required_at,priority";
+  return [
+    "id",
+    "requisition_number",
+    "revision_number",
+    "status",
+    "updated_at",
+    "department_id",
+    "destination_department_id",
+    "required_at",
+    "priority",
+    "submitted_at",
+    "received_at",
+    "preparing_at",
+    "delivered_at",
+    "accepted_at",
+    "closed_at",
+    "rejected_at"
+  ].join(",");
 }
 
 async function upsertRequisitionRow(settings, row) {

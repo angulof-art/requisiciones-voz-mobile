@@ -1,9 +1,9 @@
-import { DEFAULT_CATALOG, normalizeCatalog, normalizeText } from "./catalog.js?v=2.0.0-rc.2";
-import { PUBLIC_APP_CONFIG } from "./config.js?v=2.0.0-rc.2";
-import { IndexedDbRepository, IndexedDbUnavailableError } from "./db/indexeddb.js?v=2.0.0-rc.2";
-import { migrateV10ToIndexedDb } from "./db/migrate-v10.js?v=2.0.0-rc.2";
-import { createRequisition, normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.2";
-import { canSeeRequisitionLocally, hasRole } from "./auth/permissions.js?v=2.0.0-rc.2";
+import { DEFAULT_CATALOG, normalizeCatalog, normalizeText } from "./catalog.js?v=2.0.0-rc.3";
+import { PUBLIC_APP_CONFIG } from "./config.js?v=2.0.0-rc.3";
+import { IndexedDbRepository, IndexedDbUnavailableError } from "./db/indexeddb.js?v=2.0.0-rc.3";
+import { migrateV10ToIndexedDb } from "./db/migrate-v10.js?v=2.0.0-rc.3";
+import { createRequisition, normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.3";
+import { canSeeRequisitionLocally, hasRole } from "./auth/permissions.js?v=2.0.0-rc.3";
 
 export const STORAGE_KEYS = Object.freeze({
   requisitions: "requisiciones-voz:requisitions:v1",
@@ -301,13 +301,17 @@ export async function queueSyncChange(type, payload, existing = null) {
   const payloadId = payload?.id || "";
   const dedupeKey = payloadId ? `${type}:${payloadId}` : type;
   const now = new Date().toISOString();
-  const queue = (existing || (await loadSyncQueue())).filter(
+  const currentQueue = existing || (await loadSyncQueue());
+  const previousEntry = currentQueue.find(
+    (entry) => (entry.dedupeKey || queueEntryDedupeKey(entry)) === dedupeKey
+  );
+  const queue = currentQueue.filter(
     (entry) => (entry.dedupeKey || queueEntryDedupeKey(entry)) !== dedupeKey
   );
   queue.unshift({
     id: createQueueId(),
     type,
-    payload,
+    payload: mergeQueuePayload(type, previousEntry?.payload, payload),
     dedupeKey,
     status: "pending",
     attempts: 0,
@@ -321,6 +325,20 @@ export async function queueSyncChange(type, payload, existing = null) {
   const next = queue.slice(0, 500);
   await saveSyncQueue(next);
   return next;
+}
+
+export function mergeQueuePayload(type, previousPayload = {}, nextPayload = {}) {
+  if (type !== "requisition") return nextPayload;
+  const transitions = [
+    ...normalizeWorkflowTransitions(previousPayload?.workflowTransitions),
+    ...normalizeWorkflowTransitions(nextPayload?.workflowTransitions),
+    ...normalizeWorkflowTransitions(nextPayload?.workflowTransition ? [nextPayload.workflowTransition] : [])
+  ];
+  return {
+    ...previousPayload,
+    ...nextPayload,
+    workflowTransitions: transitions.slice(-20)
+  };
 }
 
 export async function saveSyncQueue(queue) {
@@ -361,6 +379,11 @@ export async function markSyncQueueFailed(queue, error) {
     };
   });
   return saveSyncQueue(next);
+}
+
+export async function resolveSyncQueueEntries(queue, resolvedEntryIds) {
+  const resolved = new Set(resolvedEntryIds || []);
+  return saveSyncQueue(queue.filter((entry) => !resolved.has(entry.id)));
 }
 
 export function hasDueSyncEntries(queue, now = Date.now()) {
@@ -498,6 +521,16 @@ function normalizeQueueEntry(entry) {
 
 function queueEntryDedupeKey(entry) {
   return entry.payload?.id ? `${entry.type}:${entry.payload.id}` : entry.type || "unknown";
+}
+
+function normalizeWorkflowTransitions(transitions) {
+  return (Array.isArray(transitions) ? transitions : [])
+    .map((entry) => ({
+      from: String(entry?.from || ""),
+      to: String(entry?.to || ""),
+      changedAt: String(entry?.changedAt || "")
+    }))
+    .filter((entry) => entry.from && entry.to && entry.from !== entry.to);
 }
 
 function removeItem(key) {

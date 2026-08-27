@@ -4,8 +4,8 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=2.0.0-rc.2";
-import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.2";
+} from "./catalog.js?v=2.0.0-rc.3";
+import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.3";
 import {
   STATUS,
   addChange,
@@ -23,7 +23,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=2.0.0-rc.2";
+} from "./requisitions.js?v=2.0.0-rc.3";
 import {
   clearCurrentRequisition,
   getStorageDiagnostics,
@@ -33,20 +33,21 @@ import {
   markSyncQueueSyncing,
   queueSyncChange,
   rememberName,
+  resolveSyncQueueEntries,
   saveCatalog,
   saveCurrentRequisition,
   saveRequisitions,
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=2.0.0-rc.2";
+} from "./storage.js?v=2.0.0-rc.3";
 import {
   claimLegacyLocalData,
   initializeStorage,
   loadCachedAuthContext,
   saveCachedAuthContext,
   setStorageContext
-} from "./storage.js?v=2.0.0-rc.2";
+} from "./storage.js?v=2.0.0-rc.3";
 import {
   classifySupabaseError,
   fetchProductAliases,
@@ -60,27 +61,27 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=2.0.0-rc.2";
-import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.2";
-import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.2";
-import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.2";
+} from "./supabase.js?v=2.0.0-rc.3";
+import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.3";
+import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.3";
+import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.3";
 import {
   onAuthStateChange,
   restoreSession,
   signInWithPassword,
   signOut
-} from "./auth/session.js?v=2.0.0-rc.2";
-import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.2";
-import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.2";
-import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.2";
+} from "./auth/session.js?v=2.0.0-rc.3";
+import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.3";
+import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.3";
+import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.3";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
   resolveRequiredAt,
   transitionRequisition,
   updateItemFulfillment
-} from "./workflow.js?v=2.0.0-rc.2";
-import { APP_VERSION } from "./version.js?v=2.0.0-rc.2";
+} from "./workflow.js?v=2.0.0-rc.3";
+import { APP_VERSION } from "./version.js?v=2.0.0-rc.3";
 
 let state = null;
 let appSession = null;
@@ -1417,7 +1418,11 @@ async function handleHistoryAction(event) {
     try {
       transitionRequisition(requisition, nextStatus);
       addChange(requisition, `flujo_${nextStatus}`, previous, requisition);
-      await persistWorkflowRequisition(requisition);
+      await persistWorkflowRequisition(requisition, [{
+        from: previous.status,
+        to: requisition.status,
+        changedAt: requisition.updatedAt
+      }]);
       toast(nextStatus === "accepted" ? "Entrega recibida conforme." : "Pedido cerrado.");
     } catch (error) {
       toast(error.message);
@@ -1431,12 +1436,18 @@ async function handleInboxAction(event) {
   const requisition = state.requisitions.find((entry) => entry.id === button.dataset.id);
   if (!requisition) return;
   const previous = clone(requisition);
+  const workflowTransitions = [];
+  const applyWorkflowTransition = (nextStatus) => {
+    const from = requisition.status;
+    transitionRequisition(requisition, nextStatus);
+    workflowTransitions.push({ from, to: nextStatus, changedAt: requisition.updatedAt });
+  };
   try {
-    if (button.dataset.action === "receive") transitionRequisition(requisition, "received");
-    if (button.dataset.action === "prepare") transitionRequisition(requisition, "preparing");
+    if (button.dataset.action === "receive") applyWorkflowTransition("received");
+    if (button.dataset.action === "prepare") applyWorkflowTransition("preparing");
     if (button.dataset.action === "save-fulfillment") {
       const card = button.closest("[data-requisition-id]");
-      if (requisition.status === "received") transitionRequisition(requisition, "preparing");
+      if (requisition.status === "received") applyWorkflowTransition("preparing");
       for (const row of card.querySelectorAll("[data-fulfillment-item]")) {
         const item = requisition.items.find((entry) => entry.id === row.dataset.fulfillmentItem);
         if (!item) continue;
@@ -1449,19 +1460,19 @@ async function handleInboxAction(event) {
       }
       const derived = deriveRequisitionFulfillmentStatus(requisition.items);
       if (derived !== requisition.status && ["preparing", "partial", "delivered"].includes(derived)) {
-        transitionRequisition(requisition, derived);
+        applyWorkflowTransition(derived);
       }
     }
     if (button.dataset.action === "deliver-all") {
-      if (requisition.status === "received") transitionRequisition(requisition, "preparing");
+      if (requisition.status === "received") applyWorkflowTransition("preparing");
       requisition.items.forEach((item) => updateItemFulfillment(item, {
         fulfillmentStatus: "delivered",
         deliveredQuantity: item.requestedQuantity || item.quantity
       }));
-      transitionRequisition(requisition, "delivered");
+      applyWorkflowTransition("delivered");
     }
     addChange(requisition, `flujo_${button.dataset.action}`, previous, requisition);
-    await persistWorkflowRequisition(requisition);
+    await persistWorkflowRequisition(requisition, workflowTransitions);
     toast("Estado del pedido actualizado.");
   } catch (error) {
     Object.assign(requisition, previous);
@@ -1469,10 +1480,14 @@ async function handleInboxAction(event) {
   }
 }
 
-async function persistWorkflowRequisition(requisition) {
+async function persistWorkflowRequisition(requisition, workflowTransitions = []) {
   markPendingSync(requisition);
   state.requisitions = await upsertRequisition(requisition, state.requisitions);
-  state.syncQueue = await queueSyncChange("requisition", { id: requisition.id }, state.syncQueue);
+  state.syncQueue = await queueSyncChange(
+    "requisition",
+    { id: requisition.id, workflowTransitions },
+    state.syncQueue
+  );
   if (state.current.id === requisition.id) {
     state.current = clone(requisition);
     await persistCurrent();
@@ -1633,7 +1648,8 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
     const syncResult = await syncAllToSupabase(
       state.settings.supabase,
       state.requisitions.filter((requisition) => pendingIds.has(requisition.id)),
-      state.catalog
+      state.catalog,
+      { queueEntries: state.syncQueue }
     );
     if (syncResult.renames.length) {
       const currentRename = syncResult.renames.find((rename) => rename.id === state.current.id);
@@ -1647,22 +1663,28 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
     await persistCurrent();
     if (downloadAfter) await refreshHistoryFromSupabase();
     state.settings.supabase.lastSyncAt = new Date().toISOString();
-    state.syncQueue = [];
-    await saveSyncQueue([]);
+    state.syncQueue = await resolveSyncQueueEntries(
+      state.syncQueue,
+      state.syncQueue.map((entry) => entry.id)
+    );
     await saveSettings(state.settings);
     supabaseConnectionState = "connected";
     els.autosaveState.textContent = "Sincronizado";
     els.autosaveState.classList.add("synced");
     const adjustedNumber = syncResult.renames.at(-1)?.requisitionNumber;
+    const reconciledStatus = syncResult.reconciliations.length > 0;
     renderSupabaseMessage(
-      adjustedNumber
+      reconciledStatus
+        ? "Este pedido cambió de estado en el servidor y fue actualizado."
+        : adjustedNumber
         ? `Datos subidos. Número ajustado automáticamente: ${adjustedNumber}.`
         : downloadAfter
           ? "Datos locales subidos y datos de la nube combinados."
           : "Datos locales subidos a Supabase."
     );
     render();
-    if (!silent) toast("Datos locales subidos correctamente.");
+    if (reconciledStatus) toast("Este pedido cambió de estado en el servidor y fue actualizado.");
+    else if (!silent) toast("Datos locales subidos correctamente.");
   } catch (error) {
     if (state.syncQueue.length) {
       try {
