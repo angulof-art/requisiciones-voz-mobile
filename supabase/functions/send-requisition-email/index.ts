@@ -1,7 +1,7 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { corsHeaders, isAllowedOrigin } from "./cors.ts";
-import { createAdminClient, loadAuthorizedEmailRequest, persistEmailAttempt } from "./database.ts";
+import { loadAuthorizedEmailRequest, persistEmailAttempt } from "./database.ts";
 import { renderRequisitionEmail } from "./render.ts";
 import { ResendEmailProvider } from "./provider.ts";
 import { HttpError, parseSendRequest, safeErrorResponse } from "./validation.ts";
@@ -18,7 +18,7 @@ const authenticatedHandler = withSupabase({ auth: "user" }, async (request, cont
 
     const authorized = await loadAuthorizedEmailRequest(context.supabase, input, userData.user.id);
     const result = await persistEmailAttempt({
-      admin: createAdminClient(),
+      admin: context.supabaseAdmin,
       provider: new ResendEmailProvider(),
       authorized,
       input,

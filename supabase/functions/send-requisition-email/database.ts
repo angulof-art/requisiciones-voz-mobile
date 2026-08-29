@@ -1,14 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
 import { HttpError, normalizeEmail, validEmail } from "./validation.ts";
-
-export function createAdminClient() {
-  const url = String(Deno.env.get("SUPABASE_URL") || "");
-  const secret = resolveSecretKey();
-  if (!url || !secret) throw new HttpError(503, "server_not_configured", "El servicio de correo no esta configurado.");
-  return createClient(url, secret, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
-  });
-}
 
 export async function loadAuthorizedEmailRequest(client: any, input: any, userId: string) {
   const requisition = await one(client.from("requisitions").select([
@@ -262,16 +252,6 @@ export function buildRecipientSnapshots(sendId: string, recipients: any[]) {
 async function sha256(value: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function resolveSecretKey() {
-  try {
-    const keys = JSON.parse(String(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}"));
-    if (keys.default) return String(Deno.env.get(keys.default) || keys.default);
-  } catch {
-    // Legacy platform variables remain a controlled fallback.
-  }
-  return String(Deno.env.get("SUPABASE_SECRET_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
 }
 
 async function one(query: any, code: string, message: string) {

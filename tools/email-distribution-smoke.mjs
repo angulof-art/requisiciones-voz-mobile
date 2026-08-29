@@ -211,6 +211,8 @@ assert.ok(edge.includes('requirePermission(permissions, "email.send")'));
 assert.ok(edge.includes("recipient_not_authorized"));
 assert.ok(edge.includes("Idempotency-Key") === false);
 assert.ok(index.includes('auth: "user"'));
+assert.ok(index.includes("admin: context.supabaseAdmin"));
+assert.equal(edge.includes("SUPABASE_SECRET_KEYS"), false);
 assert.ok(config.includes("verify_jwt = true"));
 assert.equal(/@(aloft|marriott)\./i.test(`${migration}\n${edge}\n${index}`), false);
 
