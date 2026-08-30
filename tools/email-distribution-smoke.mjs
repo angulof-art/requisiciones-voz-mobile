@@ -196,6 +196,7 @@ assert.deepEqual(snapshots, [
 ]);
 
 const migration = readFileSync("supabase/migrations/20260823230508_email_distribution.sql", "utf8");
+const serviceRoleGrantMigration = readFileSync("supabase/migrations/20260830021117_grant_email_audit_service_role.sql", "utf8");
 const edge = readFileSync("supabase/functions/send-requisition-email/database.ts", "utf8");
 const index = readFileSync("supabase/functions/send-requisition-email/index.ts", "utf8");
 const config = readFileSync("supabase/config.toml", "utf8");
@@ -214,6 +215,9 @@ assert.ok(index.includes('auth: "user"'));
 assert.ok(index.includes("admin: context.supabaseAdmin"));
 assert.equal(edge.includes("SUPABASE_SECRET_KEYS"), false);
 assert.ok(config.includes("verify_jwt = true"));
+assert.ok(serviceRoleGrantMigration.includes("grant select, insert, update on public.requisition_email_sends to service_role"));
+assert.ok(serviceRoleGrantMigration.includes("grant select, insert on public.requisition_email_send_recipients to service_role"));
+assert.equal(serviceRoleGrantMigration.includes(" to authenticated"), false);
 assert.equal(/@(aloft|marriott)\./i.test(`${migration}\n${edge}\n${index}`), false);
 
 console.log("Email distribution smoke OK");
