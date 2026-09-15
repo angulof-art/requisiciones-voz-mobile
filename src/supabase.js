@@ -1,5 +1,5 @@
-import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.3";
-import { canTransition } from "./workflow.js?v=2.0.0-rc.3";
+import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.4";
+import { canTransition } from "./workflow.js?v=2.0.0-rc.4";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
@@ -173,6 +173,8 @@ export async function syncAllToSupabase(settings, requisitions, catalog, options
   }
   const renames = [];
   const reconciliations = [];
+  const syncedIds = [];
+  const failures = [];
   const queueEntries = new Map(
     (options.queueEntries || [])
       .filter((entry) => entry.type === "requisition" && entry.payload?.id)
@@ -180,13 +182,18 @@ export async function syncAllToSupabase(settings, requisitions, catalog, options
   );
   for (const requisition of requisitions) {
     const queueEntry = queueEntries.get(requisition.id);
-    const result = await syncRequisitionToSupabase(settings, requisition, [], {
-      workflowTransitions: queueEntry?.payload?.workflowTransitions || []
-    });
-    if (result.rename) renames.push(result.rename);
-    if (result.reconciliation) reconciliations.push(result.reconciliation);
+    try {
+      const result = await syncRequisitionToSupabase(settings, requisition, [], {
+        workflowTransitions: queueEntry?.payload?.workflowTransitions || []
+      });
+      syncedIds.push(requisition.id);
+      if (result.rename) renames.push(result.rename);
+      if (result.reconciliation) reconciliations.push(result.reconciliation);
+    } catch (error) {
+      failures.push({ id: requisition.id, error });
+    }
   }
-  return { renames, reconciliations };
+  return { renames, reconciliations, syncedIds, failures };
 }
 
 export async function fetchRequisitionsFromSupabase(settings) {
@@ -276,6 +283,7 @@ export async function fetchRequisitionFromSupabase(settings, requisitionId) {
 
 export function applyCanonicalRequisitionFields(requisition, remoteRow) {
   if (!requisition || !remoteRow) return requisition;
+  applyCanonicalIdentityFields(requisition, remoteRow);
   requisition.requisitionNumber = remoteRow.requisition_number || remoteRow.requisitionNumber || requisition.requisitionNumber;
   requisition.revisionNumber = Math.max(1, Number(remoteRow.revision_number || remoteRow.revisionNumber) || requisition.revisionNumber || 1);
   requisition.status = remoteRow.status || requisition.status;
@@ -335,6 +343,7 @@ async function upsertRequisitionWithUniqueNumber(settings, requisition, workspac
     rename = recordCanonicalNumber(requisition, existingRemote.requisition_number);
   }
   if (existingRemote) {
+    applyCanonicalIdentityFields(requisition, existingRemote);
     const workflowSequence = resolveWorkflowSequence(
       existingRemote.status,
       requisition.status,
@@ -415,6 +424,17 @@ export function reconcileRequisitionCanonicalState(requisition, remoteRow) {
     status: requisition.status,
     revisionNumber: requisition.revisionNumber
   };
+}
+
+export function applyCanonicalIdentityFields(requisition, remoteRow) {
+  if (!requisition || !remoteRow) return requisition;
+  requisition.organizationId = remoteRow.organization_id ?? remoteRow.organizationId ?? requisition.organizationId;
+  requisition.locationId = remoteRow.location_id ?? remoteRow.locationId ?? requisition.locationId;
+  requisition.requestedByUserId = remoteRow.requested_by_user_id
+    ?? remoteRow.requestedByUserId
+    ?? requisition.requestedByUserId;
+  requisition.createdAt = remoteRow.created_at ?? remoteRow.createdAt ?? requisition.createdAt;
+  return requisition;
 }
 
 export function resolveWorkflowSequence(remoteStatus, localStatus, transitions = []) {
@@ -506,9 +526,13 @@ async function findRequisitionById(settings, requisitionId) {
 function canonicalRequisitionSelect() {
   return [
     "id",
+    "organization_id",
+    "location_id",
+    "requested_by_user_id",
     "requisition_number",
     "revision_number",
     "status",
+    "created_at",
     "updated_at",
     "department_id",
     "destination_department_id",

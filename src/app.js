@@ -4,8 +4,8 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=2.0.0-rc.3";
-import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.3";
+} from "./catalog.js?v=2.0.0-rc.4";
+import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.4";
 import {
   STATUS,
   addChange,
@@ -23,7 +23,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=2.0.0-rc.3";
+} from "./requisitions.js?v=2.0.0-rc.4";
 import {
   clearCurrentRequisition,
   getStorageDiagnostics,
@@ -40,14 +40,14 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=2.0.0-rc.3";
+} from "./storage.js?v=2.0.0-rc.4";
 import {
   claimLegacyLocalData,
   initializeStorage,
   loadCachedAuthContext,
   saveCachedAuthContext,
   setStorageContext
-} from "./storage.js?v=2.0.0-rc.3";
+} from "./storage.js?v=2.0.0-rc.4";
 import {
   classifySupabaseError,
   fetchProductAliases,
@@ -61,27 +61,27 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=2.0.0-rc.3";
-import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.3";
-import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.3";
-import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.3";
+} from "./supabase.js?v=2.0.0-rc.4";
+import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.4";
+import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.4";
+import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.4";
 import {
   onAuthStateChange,
   restoreSession,
   signInWithPassword,
   signOut
-} from "./auth/session.js?v=2.0.0-rc.3";
-import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.3";
-import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.3";
-import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.3";
+} from "./auth/session.js?v=2.0.0-rc.4";
+import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.4";
+import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.4";
+import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.4";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
   resolveRequiredAt,
   transitionRequisition,
   updateItemFulfillment
-} from "./workflow.js?v=2.0.0-rc.3";
-import { APP_VERSION } from "./version.js?v=2.0.0-rc.3";
+} from "./workflow.js?v=2.0.0-rc.4";
+import { APP_VERSION } from "./version.js?v=2.0.0-rc.4";
 
 let state = null;
 let appSession = null;
@@ -1661,13 +1661,25 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
     }
     await saveRequisitions(state.requisitions);
     await persistCurrent();
+    const syncedIds = new Set(syncResult.syncedIds || []);
+    const knownRequisitionIds = new Set(state.requisitions.map((entry) => entry.id));
+    const resolvedEntryIds = state.syncQueue
+      .filter((entry) =>
+        entry.type !== "requisition" ||
+        !knownRequisitionIds.has(entry.payload?.id) ||
+        syncedIds.has(entry.payload?.id)
+      )
+      .map((entry) => entry.id);
+    state.syncQueue = await resolveSyncQueueEntries(state.syncQueue, resolvedEntryIds);
     if (downloadAfter) await refreshHistoryFromSupabase();
     state.settings.supabase.lastSyncAt = new Date().toISOString();
-    state.syncQueue = await resolveSyncQueueEntries(
-      state.syncQueue,
-      state.syncQueue.map((entry) => entry.id)
-    );
     await saveSettings(state.settings);
+    if (syncResult.failures?.length) {
+      const firstFailure = syncResult.failures[0].error;
+      state.syncQueue = await markSyncQueueFailed(state.syncQueue, firstFailure);
+      handleSupabaseError(firstFailure, silent);
+      return;
+    }
     supabaseConnectionState = "connected";
     els.autosaveState.textContent = "Sincronizado";
     els.autosaveState.classList.add("synced");
