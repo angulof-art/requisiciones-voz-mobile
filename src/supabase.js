@@ -1,5 +1,5 @@
-import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.7";
-import { canTransition } from "./workflow.js?v=2.0.0-rc.7";
+import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.8";
+import { canTransition } from "./workflow.js?v=2.0.0-rc.8";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
@@ -398,6 +398,10 @@ async function upsertRequisitionWithUniqueNumber(settings, requisition, workspac
         reconciliation = reconcileRequisitionCanonicalState(requisition, existingRemote);
         return { rename, remote: existingRemote, reconciliation, skipRelatedWrites: true };
       }
+      if (existingRemote && isSyncConflictError(error) && shouldPreferCanonicalRemote(requisition, existingRemote)) {
+        reconciliation = reconcileRequisitionCanonicalState(requisition, existingRemote);
+        return { rename, remote: existingRemote, reconciliation, skipRelatedWrites: true };
+      }
       if (isRequisitionTransitionError(error) && !transitionRecoveryAttempted) {
         transitionRecoveryAttempted = true;
         const currentRemote = await findRequisitionById(settings, requisition.id);
@@ -518,6 +522,23 @@ export function isRequisitionTransitionError(error) {
 export function isInactiveRequesterError(error) {
   const technical = String(error?.technical || error?.message || "").toLowerCase();
   return technical.includes("requisition requester is not an active organization member");
+}
+
+export function shouldPreferCanonicalRemote(requisition, remoteRow) {
+  const remoteRevision = Number(remoteRow?.revision_number || remoteRow?.revisionNumber) || 0;
+  const localRevision = Number(requisition?.lastSyncedRevision) || 0;
+  const remoteUpdatedAt = Date.parse(remoteRow?.updated_at || remoteRow?.updatedAt || "");
+  const localUpdatedAt = Date.parse(requisition?.updatedAt || "");
+  const remoteIsNotOlder = Number.isFinite(remoteUpdatedAt)
+    && (!Number.isFinite(localUpdatedAt) || remoteUpdatedAt >= localUpdatedAt);
+  const statusIsCanonical = remoteRow?.status === requisition?.status
+    || !canTransition(remoteRow?.status, requisition?.status);
+  return remoteRevision > localRevision && remoteIsNotOlder && statusIsCanonical;
+}
+
+function isSyncConflictError(error) {
+  return error?.code === "sync_conflict"
+    || String(error?.technical || "").toLowerCase().includes("revision_conflict");
 }
 
 function isSupersededWorkflowChange(change, reconciliation) {
