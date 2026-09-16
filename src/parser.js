@@ -6,7 +6,7 @@ import {
   normalizeUnit,
   notesFromRawProduct,
   productAllowsUnit
-} from "./catalog.js?v=2.0.0-rc.11";
+} from "./catalog.js?v=2.0.0-rc.12";
 
 const FILLER_WORDS = new Set([
   "necesito",

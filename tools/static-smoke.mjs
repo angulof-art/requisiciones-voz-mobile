@@ -70,6 +70,8 @@ assert.ok(index.includes("Iniciar sesión"));
 assert.ok(index.includes("Mi perfil"));
 assert.ok(index.includes("Distribución del pedido"));
 assert.ok(index.includes('id="emailButton"'));
+assert.ok(index.includes('id="syncNowButton"'));
+assert.ok(app.includes('els.syncNowButton.addEventListener("click", syncNow)'));
 assert.ok(index.includes('id="emailAdminRoot"'));
 assert.ok(index.includes("Organización y accesos"));
 assert.ok(app.includes("SpeechRecognition") && app.includes("es-CR"));

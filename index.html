@@ -8,9 +8,9 @@
     <meta name="theme-color" content="#0f766e" />
     <meta name="description" content="Aplicación móvil para pedidos y requisiciones por voz." />
     <title>Pedidos por Voz</title>
-    <link rel="manifest" href="./manifest.webmanifest?v=2.0.0-rc.11" />
-    <link rel="icon" href="./icon.svg?v=2.0.0-rc.11" />
-    <link rel="stylesheet" href="./styles.css?v=2.0.0-rc.11" />
+    <link rel="manifest" href="./manifest.webmanifest?v=2.0.0-rc.12" />
+    <link rel="icon" href="./icon.svg?v=2.0.0-rc.12" />
+    <link rel="stylesheet" href="./styles.css?v=2.0.0-rc.12" />
   </head>
   <body>
     <main class="auth-shell" id="authGate">
@@ -310,7 +310,7 @@
               </select>
             </label>
             <div class="app-meta">
-              <span>Pedidos por Voz <strong id="appVersion">2.0.0-rc.11</strong></span>
+              <span>Pedidos por Voz <strong id="appVersion">2.0.0-rc.12</strong></span>
               <button class="secondary" id="installAppButton" type="button" hidden>Instalar aplicación</button>
             </div>
             <div class="storage-status">
@@ -345,6 +345,7 @@
             <div class="cloud-actions">
               <button id="saveSupabaseButton" type="button">Guardar conexión</button>
               <button class="secondary" id="testSupabaseButton" type="button">Probar</button>
+              <button class="secondary" id="syncNowButton" type="button">Sincronizar ahora</button>
               <button class="secondary" id="uploadSupabaseButton" type="button">Subir local</button>
               <button class="secondary" id="downloadSupabaseButton" type="button">Descargar nube</button>
             </div>
@@ -496,7 +497,7 @@
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </div>
 
-    <script src="./vendor/supabase.js?v=2.0.0-rc.11"></script>
-    <script type="module" src="./src/app.js?v=2.0.0-rc.11"></script>
+    <script src="./vendor/supabase.js?v=2.0.0-rc.12"></script>
+    <script type="module" src="./src/app.js?v=2.0.0-rc.12"></script>
   </body>
 </html>

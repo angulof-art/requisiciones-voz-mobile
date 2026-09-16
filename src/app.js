@@ -4,8 +4,8 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=2.0.0-rc.11";
-import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.11";
+} from "./catalog.js?v=2.0.0-rc.12";
+import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.12";
 import {
   STATUS,
   addChange,
@@ -23,7 +23,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=2.0.0-rc.11";
+} from "./requisitions.js?v=2.0.0-rc.12";
 import {
   clearCurrentRequisition,
   getStorageDiagnostics,
@@ -40,14 +40,14 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=2.0.0-rc.11";
+} from "./storage.js?v=2.0.0-rc.12";
 import {
   claimLegacyLocalData,
   initializeStorage,
   loadCachedAuthContext,
   saveCachedAuthContext,
   setStorageContext
-} from "./storage.js?v=2.0.0-rc.11";
+} from "./storage.js?v=2.0.0-rc.12";
 import {
   classifySupabaseError,
   fetchProductAliases,
@@ -61,27 +61,27 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=2.0.0-rc.11";
-import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.11";
-import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.11";
-import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.11";
+} from "./supabase.js?v=2.0.0-rc.12";
+import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.12";
+import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.12";
+import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.12";
 import {
   onAuthStateChange,
   restoreSession,
   signInWithPassword,
   signOut
-} from "./auth/session.js?v=2.0.0-rc.11";
-import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.11";
-import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.11";
-import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.11";
+} from "./auth/session.js?v=2.0.0-rc.12";
+import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.12";
+import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.12";
+import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.12";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
   resolveRequiredAt,
   transitionRequisition,
   updateItemFulfillment
-} from "./workflow.js?v=2.0.0-rc.11";
-import { APP_VERSION } from "./version.js?v=2.0.0-rc.11";
+} from "./workflow.js?v=2.0.0-rc.12";
+import { APP_VERSION } from "./version.js?v=2.0.0-rc.12";
 
 let state = null;
 let appSession = null;
@@ -218,6 +218,7 @@ const els = {
   supabaseStatus: document.querySelector("#supabaseStatus"),
   saveSupabaseButton: document.querySelector("#saveSupabaseButton"),
   testSupabaseButton: document.querySelector("#testSupabaseButton"),
+  syncNowButton: document.querySelector("#syncNowButton"),
   uploadSupabaseButton: document.querySelector("#uploadSupabaseButton"),
   downloadSupabaseButton: document.querySelector("#downloadSupabaseButton"),
   supabaseMessage: document.querySelector("#supabaseMessage"),
@@ -438,6 +439,7 @@ function bindEvents() {
   els.textSize.addEventListener("change", saveUiSettings);
   els.saveSupabaseButton.addEventListener("click", saveSupabaseSettingsFromForm);
   els.testSupabaseButton.addEventListener("click", testSupabaseConnection);
+  els.syncNowButton.addEventListener("click", syncNow);
   els.uploadSupabaseButton.addEventListener("click", uploadLocalToSupabase);
   els.downloadSupabaseButton.addEventListener("click", downloadCloudToLocal);
   els.updateAppButton.addEventListener("click", applyAppUpdate);
@@ -1597,6 +1599,16 @@ async function uploadLocalToSupabase() {
   await performSupabaseSync(false, false);
 }
 
+async function syncNow() {
+  if (!(await saveSupabaseSettingsFromForm({ announce: false }))) return;
+  if (!isSupabaseReady(state.settings.supabase)) return;
+  if (!navigator.onLine) {
+    toast("No hay conexión. La sincronización continuará cuando vuelva Internet.");
+    return;
+  }
+  await performSupabaseSync(false, true);
+}
+
 async function downloadCloudToLocal() {
   if (!(await saveSupabaseSettingsFromForm({ announce: false }))) return;
   if (!isSupabaseReady(state.settings.supabase)) return;
@@ -1760,6 +1772,7 @@ function setCloudBusy(busy) {
   [
     els.saveSupabaseButton,
     els.testSupabaseButton,
+    els.syncNowButton,
     els.uploadSupabaseButton,
     els.downloadSupabaseButton
   ].forEach((button) => {
