@@ -1,5 +1,5 @@
-import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.6";
-import { canTransition } from "./workflow.js?v=2.0.0-rc.6";
+import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.7";
+import { canTransition } from "./workflow.js?v=2.0.0-rc.7";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
@@ -131,7 +131,7 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog, 
   if (activeContext?.permissions?.includes("catalog.manage")) {
     await upsertRows(settings, "products", catalog.map((product) => productToRow(product, workspaceId)));
   }
-  const { rename, remote, reconciliation } = await upsertRequisitionWithUniqueNumber(
+  const { rename, remote, reconciliation, skipRelatedWrites } = await upsertRequisitionWithUniqueNumber(
     settings,
     requisition,
     workspaceId,
@@ -140,6 +140,10 @@ export async function syncRequisitionToSupabase(settings, requisition, catalog, 
   applyCanonicalRequisitionFields(requisition, remote);
   requisition.lastSyncedRevision = requisition.revisionNumber;
   requisition.lastSyncedAt = requisition.updatedAt || new Date().toISOString();
+  if (skipRelatedWrites) {
+    requisition.syncStatus = "synced";
+    return { rename, reconciliation };
+  }
   requisition.syncStatus = "pending";
   await supabaseRequest(settings, "requisition_items", {
     method: "DELETE",
@@ -390,6 +394,10 @@ async function upsertRequisitionWithUniqueNumber(settings, requisition, workspac
       const inserted = await upsertRequisitionRow(settings, row);
       return { rename, remote: inserted || row, reconciliation };
     } catch (error) {
+      if (existingRemote && isInactiveRequesterError(error)) {
+        reconciliation = reconcileRequisitionCanonicalState(requisition, existingRemote);
+        return { rename, remote: existingRemote, reconciliation, skipRelatedWrites: true };
+      }
       if (isRequisitionTransitionError(error) && !transitionRecoveryAttempted) {
         transitionRecoveryAttempted = true;
         const currentRemote = await findRequisitionById(settings, requisition.id);
@@ -505,6 +513,11 @@ async function applyWorkflowSequence(settings, requisition, remoteRow, sequence)
 export function isRequisitionTransitionError(error) {
   const technical = String(error?.technical || error?.message || "").toLowerCase();
   return technical.includes("invalid requisition transition");
+}
+
+export function isInactiveRequesterError(error) {
+  const technical = String(error?.technical || error?.message || "").toLowerCase();
+  return technical.includes("requisition requester is not an active organization member");
 }
 
 function isSupersededWorkflowChange(change, reconciliation) {

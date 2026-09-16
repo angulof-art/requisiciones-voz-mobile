@@ -1,10 +1,10 @@
-import { productAllowsUnit } from "./catalog.js?v=2.0.0-rc.6";
+import { productAllowsUnit } from "./catalog.js?v=2.0.0-rc.7";
 import {
   WORKFLOW_STATUS,
   normalizeFulfillmentFields,
   normalizeWorkflowFields,
   transitionRequisition
-} from "./workflow.js?v=2.0.0-rc.6";
+} from "./workflow.js?v=2.0.0-rc.7";
 
 export const STATUS = WORKFLOW_STATUS;
 
