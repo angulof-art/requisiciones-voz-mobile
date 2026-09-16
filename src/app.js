@@ -4,8 +4,8 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=2.0.0-rc.4";
-import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.4";
+} from "./catalog.js?v=2.0.0-rc.5";
+import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.5";
 import {
   STATUS,
   addChange,
@@ -23,7 +23,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=2.0.0-rc.4";
+} from "./requisitions.js?v=2.0.0-rc.5";
 import {
   clearCurrentRequisition,
   getStorageDiagnostics,
@@ -40,14 +40,14 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=2.0.0-rc.4";
+} from "./storage.js?v=2.0.0-rc.5";
 import {
   claimLegacyLocalData,
   initializeStorage,
   loadCachedAuthContext,
   saveCachedAuthContext,
   setStorageContext
-} from "./storage.js?v=2.0.0-rc.4";
+} from "./storage.js?v=2.0.0-rc.5";
 import {
   classifySupabaseError,
   fetchProductAliases,
@@ -61,27 +61,27 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=2.0.0-rc.4";
-import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.4";
-import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.4";
-import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.4";
+} from "./supabase.js?v=2.0.0-rc.5";
+import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.5";
+import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.5";
+import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.5";
 import {
   onAuthStateChange,
   restoreSession,
   signInWithPassword,
   signOut
-} from "./auth/session.js?v=2.0.0-rc.4";
-import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.4";
-import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.4";
-import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.4";
+} from "./auth/session.js?v=2.0.0-rc.5";
+import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.5";
+import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.5";
+import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.5";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
   resolveRequiredAt,
   transitionRequisition,
   updateItemFulfillment
-} from "./workflow.js?v=2.0.0-rc.4";
-import { APP_VERSION } from "./version.js?v=2.0.0-rc.4";
+} from "./workflow.js?v=2.0.0-rc.5";
+import { APP_VERSION } from "./version.js?v=2.0.0-rc.5";
 
 let state = null;
 let appSession = null;
@@ -1633,7 +1633,8 @@ async function verifySupabaseConnection() {
 }
 
 async function performSupabaseSync(silent = false, downloadAfter = true) {
-  if (!navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
+  if (isCloudSyncing || !navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
+  window.clearTimeout(autoSyncTimer);
   try {
     isCloudSyncing = true;
     setCloudBusy(true);
@@ -1723,7 +1724,7 @@ async function performSupabaseSync(silent = false, downloadAfter = true) {
 }
 
 async function performSupabaseDownload(silent = false) {
-  if (!navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
+  if (isCloudSyncing || !navigator.onLine || !isSupabaseReady(state.settings.supabase)) return;
   try {
     isCloudSyncing = true;
     setCloudBusy(true);
