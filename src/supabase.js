@@ -1,5 +1,5 @@
-import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.5";
-import { canTransition } from "./workflow.js?v=2.0.0-rc.5";
+import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.6";
+import { canTransition } from "./workflow.js?v=2.0.0-rc.6";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
@@ -184,7 +184,12 @@ export async function syncAllToSupabase(settings, requisitions, catalog, options
     const queueEntry = queueEntries.get(requisition.id);
     try {
       const result = await syncRequisitionToSupabase(settings, requisition, [], {
-        workflowTransitions: queueEntry?.payload?.workflowTransitions || []
+        workflowTransitions: queueEntry?.payload?.workflowTransitions || [],
+        claimRequesterIdentity: Boolean(
+          queueEntry &&
+          queueEntry.userId === activeContext?.userId &&
+          queueEntry.organizationId === activeContext?.organizationId
+        )
       });
       syncedIds.push(requisition.id);
       if (result.rename) renames.push(result.rename);
@@ -339,7 +344,7 @@ async function upsertRequisitionWithUniqueNumber(settings, requisition, workspac
   let reconciliation = null;
   let transitionRecoveryAttempted = false;
   let existingRemote = await findRequisitionById(settings, requisition.id);
-  if (!existingRemote) claimLocalRequesterIdentity(requisition);
+  if (!existingRemote && options.claimRequesterIdentity) claimLocalRequesterIdentity(requisition);
   if (existingRemote?.requisition_number && existingRemote.requisition_number !== requisition.requisitionNumber) {
     rename = recordCanonicalNumber(requisition, existingRemote.requisition_number);
   }
@@ -413,7 +418,6 @@ async function upsertRequisitionWithUniqueNumber(settings, requisition, workspac
 function claimLocalRequesterIdentity(requisition) {
   if (
     activeContext?.userId &&
-    requisition.localOwnerUserId === activeContext.userId &&
     requisition.requestedByUserId !== activeContext.userId
   ) {
     requisition.requestedByUserId = activeContext.userId;
