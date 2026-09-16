@@ -10,7 +10,12 @@ import {
 } from "../src/email/api.js";
 import { validateDistribution } from "../src/email/distribution.js";
 import { buildEmailPreview } from "../src/email/preview.js";
-import { acquireEmailSendLock, getEmailButtonState, releaseEmailSendLock } from "../src/email/ui.js";
+import {
+  acquireEmailSendLock,
+  getEmailButtonState,
+  prepareRequisitionForEmail,
+  releaseEmailSendLock
+} from "../src/email/ui.js";
 import { buildPrintableHtml, buildShareText, requisitionToCsv } from "../src/exporters.js";
 import { dedupeRequisitionItemsById, normalizeRequisition } from "../src/requisitions.js";
 import {
@@ -43,6 +48,32 @@ assert.deepEqual(getEmailButtonState({
   disabled: false,
   title: ""
 });
+
+let pendingEmailSync = true;
+const preparationCalls = [];
+const refreshedReview = await prepareRequisitionForEmail({
+  requisitionId: "req-stale-email",
+  isPendingSync: () => pendingEmailSync,
+  resolvePendingSync: async (id) => {
+    preparationCalls.push(`sync:${id}`);
+    pendingEmailSync = false;
+  },
+  refreshRequisition: async (id) => {
+    preparationCalls.push(`refresh:${id}`);
+    return requisition({ id, status: "review", syncStatus: "synced" });
+  }
+});
+assert.equal(refreshedReview.status, "review");
+assert.deepEqual(preparationCalls, ["sync:req-stale-email", "refresh:req-stale-email"]);
+
+await assert.rejects(() => prepareRequisitionForEmail({
+  requisitionId: "req-still-pending",
+  isPendingSync: () => true,
+  resolvePendingSync: async () => false,
+  refreshRequisition: async () => {
+    throw new Error("No debe descargar mientras la cola sigue pendiente.");
+  }
+}), (error) => error.code === "sync_pending");
 assert.equal(getEmailButtonState({
   permitted: true,
   status: "review",

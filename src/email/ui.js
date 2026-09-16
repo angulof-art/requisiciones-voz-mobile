@@ -11,9 +11,9 @@ import {
   setRecipientSelected,
   splitItemsByDistribution,
   validateDistribution
-} from "./distribution.js?v=2.0.0-rc.9";
-import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.9";
-import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.9";
+} from "./distribution.js?v=2.0.0-rc.10";
+import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.10";
+import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.10";
 import {
   emailErrorMessage,
   loadEmailConfiguration,
@@ -25,12 +25,12 @@ import {
   saveGroupRecipients,
   sendRequisitionEmail,
   unsendableStatusMessage
-} from "./api.js?v=2.0.0-rc.9";
+} from "./api.js?v=2.0.0-rc.10";
 import {
   EMAIL_PERMISSIONS,
   canManageEmailDistribution,
   hasEmailPermission
-} from "./permissions.js?v=2.0.0-rc.9";
+} from "./permissions.js?v=2.0.0-rc.10";
 
 export function getEmailButtonState({ permitted, status = "draft", online = true, syncStatus = "pending" }) {
   const awaitingSubmission = ["draft", "review"].includes(status);
@@ -47,6 +47,21 @@ export function getEmailButtonState({ permitted, status = "draft", online = true
         ? "El envío por correo necesita conexión."
         : emailUnavailable ? "Sincronice el pedido antes de enviarlo por correo." : ""
   };
+}
+
+export async function prepareRequisitionForEmail({
+  requisitionId,
+  isPendingSync,
+  resolvePendingSync,
+  refreshRequisition
+}) {
+  if (isPendingSync?.(requisitionId)) await resolvePendingSync?.(requisitionId);
+  if (isPendingSync?.(requisitionId)) {
+    const error = new Error("Este pedido todavía está pendiente de sincronización. Espere a que termine antes de enviarlo por correo.");
+    error.code = "sync_pending";
+    throw error;
+  }
+  return refreshRequisition(requisitionId);
 }
 
 export function createEmailDistributionController(options) {
@@ -147,15 +162,14 @@ export function createEmailDistributionController(options) {
       return options.toast("No tiene permiso para enviar correos.");
     }
     if (!navigator.onLine) return options.toast("El envio por correo necesita conexion.");
-    if (["draft", "review", "voided", "rejected"].includes(requisition?.status)) {
-      return options.toast(unsendableStatusMessage(requisition.status));
-    }
-    if (options.isPendingSync?.(requisition?.id)) {
-      return options.toast("Este pedido todavía está pendiente de sincronización. Espere a que termine antes de enviarlo por correo.");
-    }
     let refreshed;
     try {
-      refreshed = await options.refreshRequisition(requisition.id);
+      refreshed = await prepareRequisitionForEmail({
+        requisitionId: requisition.id,
+        isPendingSync: options.isPendingSync,
+        resolvePendingSync: options.resolvePendingSync,
+        refreshRequisition: options.refreshRequisition
+      });
     } catch (error) {
       return options.toast(friendlyError(error, "No se pudo actualizar el pedido antes de preparar el correo."));
     }

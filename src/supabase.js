@@ -1,5 +1,5 @@
-import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.9";
-import { canTransition } from "./workflow.js?v=2.0.0-rc.9";
+import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.10";
+import { canTransition } from "./workflow.js?v=2.0.0-rc.10";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
