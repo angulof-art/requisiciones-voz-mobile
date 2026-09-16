@@ -4,8 +4,8 @@ import {
   normalizeCatalogProduct,
   parseList,
   unitOptions
-} from "./catalog.js?v=2.0.0-rc.10";
-import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.10";
+} from "./catalog.js?v=2.0.0-rc.11";
+import { downloadExcel, downloadPdf, shareRequisition } from "./exporters.js?v=2.0.0-rc.11";
 import {
   STATUS,
   addChange,
@@ -23,7 +23,7 @@ import {
   normalizeItem,
   validateRequisition,
   validateRequisitionItem
-} from "./requisitions.js?v=2.0.0-rc.10";
+} from "./requisitions.js?v=2.0.0-rc.11";
 import {
   clearCurrentRequisition,
   getStorageDiagnostics,
@@ -40,14 +40,14 @@ import {
   saveSettings,
   saveSyncQueue,
   upsertRequisition
-} from "./storage.js?v=2.0.0-rc.10";
+} from "./storage.js?v=2.0.0-rc.11";
 import {
   claimLegacyLocalData,
   initializeStorage,
   loadCachedAuthContext,
   saveCachedAuthContext,
   setStorageContext
-} from "./storage.js?v=2.0.0-rc.10";
+} from "./storage.js?v=2.0.0-rc.11";
 import {
   classifySupabaseError,
   fetchProductAliases,
@@ -61,27 +61,27 @@ import {
   syncAllToSupabase,
   testSupabase,
   validatePublishableKey
-} from "./supabase.js?v=2.0.0-rc.10";
-import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.10";
-import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.10";
-import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.10";
+} from "./supabase.js?v=2.0.0-rc.11";
+import { getSupabaseClient } from "./auth/client.js?v=2.0.0-rc.11";
+import { loadUserContextWithRetry, selectActiveContext } from "./auth/context.js?v=2.0.0-rc.11";
+import { PERMISSIONS, hasPermission, hasRole } from "./auth/permissions.js?v=2.0.0-rc.11";
 import {
   onAuthStateChange,
   restoreSession,
   signInWithPassword,
   signOut
-} from "./auth/session.js?v=2.0.0-rc.10";
-import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.10";
-import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.10";
-import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.10";
+} from "./auth/session.js?v=2.0.0-rc.11";
+import { enrichCatalogWithAliases, processVoiceRequest } from "./voice-engine.js?v=2.0.0-rc.11";
+import { buildOperationalReport } from "./reports.js?v=2.0.0-rc.11";
+import { createEmailDistributionController } from "./email/ui.js?v=2.0.0-rc.11";
 import {
   FULFILLMENT_STATUS,
   deriveRequisitionFulfillmentStatus,
   resolveRequiredAt,
   transitionRequisition,
   updateItemFulfillment
-} from "./workflow.js?v=2.0.0-rc.10";
-import { APP_VERSION } from "./version.js?v=2.0.0-rc.10";
+} from "./workflow.js?v=2.0.0-rc.11";
+import { APP_VERSION } from "./version.js?v=2.0.0-rc.11";
 
 let state = null;
 let appSession = null;

@@ -1,9 +1,9 @@
-import { DEFAULT_CATALOG, normalizeCatalog, normalizeText } from "./catalog.js?v=2.0.0-rc.10";
-import { PUBLIC_APP_CONFIG } from "./config.js?v=2.0.0-rc.10";
-import { IndexedDbRepository, IndexedDbUnavailableError } from "./db/indexeddb.js?v=2.0.0-rc.10";
-import { migrateV10ToIndexedDb } from "./db/migrate-v10.js?v=2.0.0-rc.10";
-import { createRequisition, normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.10";
-import { canSeeRequisitionLocally, hasRole } from "./auth/permissions.js?v=2.0.0-rc.10";
+import { DEFAULT_CATALOG, normalizeCatalog, normalizeText } from "./catalog.js?v=2.0.0-rc.11";
+import { PUBLIC_APP_CONFIG } from "./config.js?v=2.0.0-rc.11";
+import { IndexedDbRepository, IndexedDbUnavailableError } from "./db/indexeddb.js?v=2.0.0-rc.11";
+import { migrateV10ToIndexedDb } from "./db/migrate-v10.js?v=2.0.0-rc.11";
+import { createRequisition, normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.11";
+import { canSeeRequisitionLocally, hasRole } from "./auth/permissions.js?v=2.0.0-rc.11";
 
 export const STORAGE_KEYS = Object.freeze({
   requisitions: "requisiciones-voz:requisitions:v1",

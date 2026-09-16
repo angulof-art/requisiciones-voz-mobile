@@ -1,5 +1,5 @@
-import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.10";
-import { canTransition } from "./workflow.js?v=2.0.0-rc.10";
+import { normalizeRequisition } from "./requisitions.js?v=2.0.0-rc.11";
+import { canTransition } from "./workflow.js?v=2.0.0-rc.11";
 
 const REST_PATH = "/rest/v1";
 const TABLES = ["products", "requisitions", "requisition_items", "requisition_changes"];
@@ -365,6 +365,18 @@ async function upsertRequisitionWithUniqueNumber(settings, requisition, workspac
       reconciliation = reconcileRequisitionCanonicalState(requisition, existingRemote);
     } else if (existingRemote.revision_number && !requisition.lastSyncedRevision) {
       requisition.lastSyncedRevision = Number(existingRemote.revision_number);
+    }
+    const remoteRevision = Number(existingRemote.revision_number) || 0;
+    const lastSyncedRevision = Number(requisition.lastSyncedRevision) || 0;
+    if (
+      remoteRevision > lastSyncedRevision
+      && existingRemote.status === requisition.status
+    ) {
+      if (shouldPreferCanonicalRemote(requisition, existingRemote)) {
+        reconciliation = reconcileRequisitionCanonicalState(requisition, existingRemote);
+        return { rename, remote: existingRemote, reconciliation, skipRelatedWrites: true };
+      }
+      requisition.lastSyncedRevision = remoteRevision;
     }
   }
   for (let attempt = 0; attempt < 4; attempt += 1) {

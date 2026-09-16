@@ -11,9 +11,9 @@ import {
   setRecipientSelected,
   splitItemsByDistribution,
   validateDistribution
-} from "./distribution.js?v=2.0.0-rc.10";
-import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.10";
-import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.10";
+} from "./distribution.js?v=2.0.0-rc.11";
+import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.11";
+import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.11";
 import {
   emailErrorMessage,
   loadEmailConfiguration,
@@ -25,12 +25,12 @@ import {
   saveGroupRecipients,
   sendRequisitionEmail,
   unsendableStatusMessage
-} from "./api.js?v=2.0.0-rc.10";
+} from "./api.js?v=2.0.0-rc.11";
 import {
   EMAIL_PERMISSIONS,
   canManageEmailDistribution,
   hasEmailPermission
-} from "./permissions.js?v=2.0.0-rc.10";
+} from "./permissions.js?v=2.0.0-rc.11";
 
 export function getEmailButtonState({ permitted, status = "draft", online = true, syncStatus = "pending" }) {
   const awaitingSubmission = ["draft", "review"].includes(status);

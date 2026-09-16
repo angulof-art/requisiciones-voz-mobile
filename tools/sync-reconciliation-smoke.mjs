@@ -39,6 +39,7 @@ await testCanonicalRequesterIdentityWins();
 await testClaimedLocalRequesterUsesActiveIdentity();
 await testInactiveRequesterUsesCanonicalRemote();
 await testOlderRevisionUsesCanonicalRemote();
+await testSameStatusNewerRemoteRebasesLocalChanges();
 await testBatchContinuesAfterOneFailure();
 testEmailAvailabilityAfterReconciliation();
 setSupabaseSessionContext(null, null);
@@ -244,6 +245,35 @@ async function testOlderRevisionUsesCanonicalRemote() {
   assert.equal(local.lastSyncedRevision, 9);
   assert.equal(local.syncStatus, "synced");
   assert.equal(harness.itemWrites(), 0);
+}
+
+async function testSameStatusNewerRemoteRebasesLocalChanges() {
+  const remote = makeRemote({
+    status: "review",
+    revision_number: 3,
+    updated_at: "2026-09-16T03:04:02.917Z"
+  });
+  const local = makeLocal({
+    requisitionNumber: remote.requisition_number,
+    status: "review",
+    revisionNumber: 4,
+    lastSyncedRevision: 2,
+    updatedAt: "2026-09-16T03:05:00.000Z"
+  });
+  const originalItems = structuredClone(local.items);
+  const harness = createSupabaseHarness(remote);
+  globalThis.fetch = harness.fetch;
+
+  const result = await syncRequisitionToSupabase(SETTINGS, local, []);
+
+  assert.equal(result.reconciliation, null);
+  assert.equal(local.status, "review");
+  assert.equal(local.revisionNumber, 4);
+  assert.equal(local.lastSyncedRevision, 4);
+  assert.equal(local.syncStatus, "synced");
+  assert.deepEqual(local.items, originalItems);
+  assert.equal(harness.patchBodies()[0].revision_number, 4);
+  assert.equal(harness.itemWrites(), 1);
 }
 
 async function testBatchContinuesAfterOneFailure() {
