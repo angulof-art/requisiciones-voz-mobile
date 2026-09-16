@@ -11,9 +11,9 @@ import {
   setRecipientSelected,
   splitItemsByDistribution,
   validateDistribution
-} from "./distribution.js?v=2.0.0-rc.8";
-import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.8";
-import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.8";
+} from "./distribution.js?v=2.0.0-rc.9";
+import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.9";
+import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.9";
 import {
   emailErrorMessage,
   loadEmailConfiguration,
@@ -25,12 +25,29 @@ import {
   saveGroupRecipients,
   sendRequisitionEmail,
   unsendableStatusMessage
-} from "./api.js?v=2.0.0-rc.8";
+} from "./api.js?v=2.0.0-rc.9";
 import {
   EMAIL_PERMISSIONS,
   canManageEmailDistribution,
   hasEmailPermission
-} from "./permissions.js?v=2.0.0-rc.8";
+} from "./permissions.js?v=2.0.0-rc.9";
+
+export function getEmailButtonState({ permitted, status = "draft", online = true, syncStatus = "pending" }) {
+  const awaitingSubmission = ["draft", "review"].includes(status);
+  const blockedStatus = ["voided", "rejected"].includes(status);
+  const emailUnavailable = !awaitingSubmission && (!online || syncStatus !== "synced");
+
+  return {
+    hidden: !permitted || awaitingSubmission,
+    label: "Enviar por correo",
+    disabled: blockedStatus || emailUnavailable,
+    title: blockedStatus
+      ? unsendableStatusMessage(status)
+      : !online && !awaitingSubmission
+        ? "El envío por correo necesita conexión."
+        : emailUnavailable ? "Sincronice el pedido antes de enviarlo por correo." : ""
+  };
+}
 
 export function createEmailDistributionController(options) {
   const elements = collectElements();
@@ -102,19 +119,16 @@ export function createEmailDistributionController(options) {
     const context = options.getContext();
     const permitted = hasEmailPermission(context, EMAIL_PERMISSIONS.send) && Boolean(context?.organizationId);
     const status = requisition?.status || "draft";
-    elements.emailButton.hidden = !permitted;
-    elements.emailButton.textContent = status === "draft"
-      ? "Enviar pedido"
-      : status === "review" ? "Revisar pedido" : "Enviar por correo";
-    const blockedStatus = ["voided", "rejected"].includes(status);
-    const emailUnavailable = !["draft", "review"].includes(status)
-      && (!navigator.onLine || requisition?.syncStatus !== "synced");
-    elements.emailButton.disabled = blockedStatus || emailUnavailable;
-    elements.emailButton.title = blockedStatus
-      ? unsendableStatusMessage(status)
-      : !navigator.onLine && !["draft", "review"].includes(status)
-        ? "El envío por correo necesita conexión."
-        : emailUnavailable ? "Sincronice el pedido antes de enviarlo por correo." : "";
+    const buttonState = getEmailButtonState({
+      permitted,
+      status,
+      online: navigator.onLine,
+      syncStatus: requisition?.syncStatus
+    });
+    elements.emailButton.hidden = buttonState.hidden;
+    elements.emailButton.textContent = buttonState.label;
+    elements.emailButton.disabled = buttonState.disabled;
+    elements.emailButton.title = buttonState.title;
   }
 
   async function handlePrimaryAction() {
