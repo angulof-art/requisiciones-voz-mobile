@@ -3,6 +3,7 @@ import { indexedDB } from "fake-indexeddb";
 import { validateDistribution } from "../src/email/distribution.js";
 import {
   setSupabaseSessionContext,
+  syncAllToSupabase,
   syncRequisitionToSupabase
 } from "../src/supabase.js";
 import {
@@ -34,6 +35,11 @@ await testInvalidLegacyTransitionReconciles();
 await testNormalTransitionStillSyncs();
 await testExplicitOfflineSequenceUsesValidSteps();
 await testQueueSurvivesReconnectAndResolves();
+await testCanonicalRequesterIdentityWins();
+await testClaimedLocalRequesterUsesActiveIdentity();
+await testInactiveRequesterUsesCanonicalRemote();
+await testOlderRevisionUsesCanonicalRemote();
+await testBatchContinuesAfterOneFailure();
 testEmailAvailabilityAfterReconciliation();
 setSupabaseSessionContext(null, null);
 globalThis.fetch = originalFetch;
@@ -153,6 +159,116 @@ async function testQueueSurvivesReconnectAndResolves() {
   resetStorageForTests();
 }
 
+async function testCanonicalRequesterIdentityWins() {
+  const remote = makeRemote({
+    requested_by_user_id: "canonical-requester",
+    organization_id: CONTEXT.organizationId,
+    location_id: CONTEXT.locationId,
+    created_at: "2026-08-26T12:50:00.000Z"
+  });
+  const local = makeLocal({ requestedByUserId: "stale-local-requester" });
+  const harness = createSupabaseHarness(remote);
+  globalThis.fetch = harness.fetch;
+
+  await syncRequisitionToSupabase(SETTINGS, local, [], { claimRequesterIdentity: true });
+
+  assert.equal(local.requestedByUserId, "canonical-requester");
+  assert.equal(harness.patchBodies()[0].requested_by_user_id, "canonical-requester");
+}
+
+async function testClaimedLocalRequesterUsesActiveIdentity() {
+  const local = makeLocal({
+    id: "req-local-only",
+    requisitionNumber: "REQ-LOCAL-ONLY",
+    requestedByUserId: "stale-local-requester",
+    localOwnerUserId: CONTEXT.userId,
+    lastSyncedRevision: 0
+  });
+  const harness = createInsertHarness();
+  globalThis.fetch = harness.fetch;
+
+  await syncRequisitionToSupabase(SETTINGS, local, [], { claimRequesterIdentity: true });
+
+  assert.equal(local.requestedByUserId, CONTEXT.userId);
+  assert.equal(harness.requisitionWrites()[0].requested_by_user_id, CONTEXT.userId);
+}
+
+async function testInactiveRequesterUsesCanonicalRemote() {
+  const remote = makeRemote({
+    status: "draft",
+    revision_number: 7,
+    requested_by_user_id: "inactive-qa-requester"
+  });
+  const local = makeLocal({
+    requisitionNumber: remote.requisition_number,
+    status: "voided",
+    revisionNumber: 8,
+    lastSyncedRevision: 7,
+    requestedByUserId: "inactive-qa-requester"
+  });
+  const originalItems = structuredClone(local.items);
+  const harness = createSupabaseHarness(remote, { inactiveRequesterError: true });
+  globalThis.fetch = harness.fetch;
+
+  const result = await syncRequisitionToSupabase(SETTINGS, local, []);
+
+  assert.equal(result.reconciliation?.previousStatus, "voided");
+  assert.equal(local.status, "draft");
+  assert.equal(local.revisionNumber, 7);
+  assert.equal(local.syncStatus, "synced");
+  assert.deepEqual(local.items, originalItems);
+  assert.equal(harness.itemWrites(), 0);
+  assert.equal(harness.changeWrites().length, 0);
+}
+
+async function testOlderRevisionUsesCanonicalRemote() {
+  const remote = makeRemote({
+    status: "voided",
+    revision_number: 9,
+    updated_at: "2026-08-30T22:03:07.828Z"
+  });
+  const local = makeLocal({
+    requisitionNumber: remote.requisition_number,
+    status: "voided",
+    revisionNumber: 9,
+    lastSyncedRevision: 8,
+    updatedAt: "2026-08-29T20:22:00.000Z"
+  });
+  const harness = createSupabaseHarness(remote, { revisionConflict: true });
+  globalThis.fetch = harness.fetch;
+
+  const result = await syncRequisitionToSupabase(SETTINGS, local, []);
+
+  assert.equal(result.reconciliation?.status, "voided");
+  assert.equal(local.revisionNumber, 9);
+  assert.equal(local.lastSyncedRevision, 9);
+  assert.equal(local.syncStatus, "synced");
+  assert.equal(harness.itemWrites(), 0);
+}
+
+async function testBatchContinuesAfterOneFailure() {
+  const first = makeLocal({ id: "req-batch-ok", requisitionNumber: "REQ-BATCH-OK" });
+  const second = makeLocal({ id: "req-batch-fail", requisitionNumber: "REQ-BATCH-FAIL" });
+  const harness = createBatchHarness([first, second], second.id);
+  globalThis.fetch = harness.fetch;
+
+  const result = await syncAllToSupabase(SETTINGS, [first, second], [], {
+    queueEntries: [first, second].map((entry) => ({
+      id: `queue-${entry.id}`,
+      type: "requisition",
+      payload: { id: entry.id },
+      userId: CONTEXT.userId,
+      organizationId: CONTEXT.organizationId
+    }))
+  });
+
+  assert.deepEqual(result.syncedIds, [first.id]);
+  assert.equal(result.failures.length, 1);
+  assert.equal(result.failures[0].id, second.id);
+  assert.equal(first.syncStatus, "synced");
+  assert.notEqual(second.syncStatus, "synced");
+}
+
 function testEmailAvailabilityAfterReconciliation() {
   const requisition = makeLocal({ status: "submitted", syncStatus: "synced" });
   requisition.lastSyncedAt = "2026-08-26T13:05:00.000Z";
@@ -172,7 +288,7 @@ function testEmailAvailabilityAfterReconciliation() {
   }).ok, false);
 }
 
-function createSupabaseHarness(initialRemote) {
+function createSupabaseHarness(initialRemote, options = {}) {
   let remote = { ...initialRemote };
   const requests = [];
   return {
@@ -180,16 +296,19 @@ function createSupabaseHarness(initialRemote) {
     patchStatuses: () => requests
       .filter((entry) => entry.method === "PATCH" && entry.url.includes("/requisitions?"))
       .map((entry) => entry.body.status),
+    patchBodies: () => requests
+      .filter((entry) => entry.method === "PATCH" && entry.url.includes("/requisitions?"))
+      .map((entry) => entry.body),
     itemWrites: () => requests.filter(
       (entry) => entry.method === "POST" && entry.url.includes("/requisition_items?")
     ).length,
     changeWrites: () => requests
       .filter((entry) => entry.method === "POST" && entry.url.includes("/requisition_changes?"))
       .flatMap((entry) => entry.body || []),
-    fetch: async (url, options = {}) => {
+    fetch: async (url, requestOptions = {}) => {
       const requestUrl = String(url);
-      const method = options.method || "GET";
-      const body = options.body ? JSON.parse(options.body) : null;
+      const method = requestOptions.method || "GET";
+      const body = requestOptions.body ? JSON.parse(requestOptions.body) : null;
       requests.push({ url: requestUrl, method, body });
 
       if (method === "GET" && requestUrl.includes("/requisitions?")) {
@@ -199,6 +318,13 @@ function createSupabaseHarness(initialRemote) {
         return jsonResponse([remote]);
       }
       if (method === "PATCH" && requestUrl.includes("/requisitions?")) {
+        if (options.inactiveRequesterError) {
+          return jsonResponse({
+            code: "P0001",
+            message: "The requisition requester is not an active organization member"
+          }, 400);
+        }
+        if (options.revisionConflict) return jsonResponse([]);
         remote = {
           ...remote,
           ...body,
@@ -210,6 +336,59 @@ function createSupabaseHarness(initialRemote) {
       }
       if (method === "DELETE") return new Response(null, { status: 204 });
       if (method === "POST") return new Response(null, { status: 204 });
+      return jsonResponse([]);
+    }
+  };
+}
+
+function createBatchHarness(requisitions, failingId) {
+  const remoteById = new Map(requisitions.map((entry) => [entry.id, makeRemote({
+    id: entry.id,
+    requisition_number: entry.requisitionNumber,
+    requested_by_user_id: CONTEXT.userId,
+    organization_id: CONTEXT.organizationId,
+    location_id: CONTEXT.locationId
+  })]));
+  return {
+    fetch: async (url, options = {}) => {
+      const requestUrl = String(url);
+      const method = options.method || "GET";
+      const id = [...remoteById.keys()].find((entryId) => requestUrl.includes(encodeURIComponent(entryId)));
+      if (method === "GET" && requestUrl.includes("/requisitions?")) {
+        if (requestUrl.includes("requisition_number=eq.")) return jsonResponse([]);
+        return jsonResponse(id ? [remoteById.get(id)] : []);
+      }
+      if (method === "PATCH" && requestUrl.includes("/requisitions?")) {
+        if (id === failingId) {
+          return jsonResponse({ code: "P0001", message: "deterministic QA failure" }, 400);
+        }
+        const body = JSON.parse(options.body || "{}");
+        const remote = { ...remoteById.get(id), ...body };
+        remoteById.set(id, remote);
+        return jsonResponse([remote]);
+      }
+      if (method === "DELETE" || method === "POST") return new Response(null, { status: 204 });
+      return jsonResponse([]);
+    }
+  };
+}
+
+function createInsertHarness() {
+  const requests = [];
+  return {
+    requisitionWrites: () => requests
+      .filter((entry) => entry.method === "POST" && entry.url.includes("/requisitions?"))
+      .flatMap((entry) => entry.body || []),
+    fetch: async (url, options = {}) => {
+      const requestUrl = String(url);
+      const method = options.method || "GET";
+      const body = options.body ? JSON.parse(options.body) : null;
+      requests.push({ url: requestUrl, method, body });
+      if (method === "GET" && requestUrl.includes("/requisitions?")) return jsonResponse([]);
+      if (method === "POST" && requestUrl.includes("/requisitions?")) {
+        return jsonResponse(Array.isArray(body) ? body : [body]);
+      }
+      if (method === "DELETE" || method === "POST") return new Response(null, { status: 204 });
       return jsonResponse([]);
     }
   };
@@ -268,9 +447,9 @@ function makeLocal(overrides = {}) {
   };
 }
 
-function jsonResponse(value) {
+function jsonResponse(value, status = 200) {
   return new Response(JSON.stringify(value), {
-    status: 200,
+    status,
     headers: { "Content-Type": "application/json" }
   });
 }
