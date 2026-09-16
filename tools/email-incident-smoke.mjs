@@ -10,7 +10,7 @@ import {
 } from "../src/email/api.js";
 import { validateDistribution } from "../src/email/distribution.js";
 import { buildEmailPreview } from "../src/email/preview.js";
-import { acquireEmailSendLock, releaseEmailSendLock } from "../src/email/ui.js";
+import { acquireEmailSendLock, getEmailButtonState, releaseEmailSendLock } from "../src/email/ui.js";
 import { buildPrintableHtml, buildShareText, requisitionToCsv } from "../src/exporters.js";
 import { dedupeRequisitionItemsById, normalizeRequisition } from "../src/requisitions.js";
 import {
@@ -31,6 +31,35 @@ assert.ok(draftValidation.errors.includes(
 ));
 assert.equal(unsendableStatusMessage("review"),
   "Este pedido todavía está en revisión. Complete el envío del pedido antes de distribuirlo por correo.");
+
+assert.deepEqual(getEmailButtonState({
+  permitted: true,
+  status: "draft",
+  online: true,
+  syncStatus: "synced"
+}), {
+  hidden: true,
+  label: "Enviar por correo",
+  disabled: false,
+  title: ""
+});
+assert.equal(getEmailButtonState({
+  permitted: true,
+  status: "review",
+  online: true,
+  syncStatus: "synced"
+}).hidden, true);
+assert.deepEqual(getEmailButtonState({
+  permitted: true,
+  status: "submitted",
+  online: true,
+  syncStatus: "synced"
+}), {
+  hidden: false,
+  label: "Enviar por correo",
+  disabled: false,
+  title: ""
+});
 
 globalThis.supabase = {
   createClient: () => ({
