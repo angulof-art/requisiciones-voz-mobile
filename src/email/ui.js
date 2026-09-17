@@ -11,9 +11,9 @@ import {
   setRecipientSelected,
   splitItemsByDistribution,
   validateDistribution
-} from "./distribution.js?v=2.0.0-rc.12";
-import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.12";
-import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.12";
+} from "./distribution.js?v=2.0.0-rc.13";
+import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.13";
+import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.13";
 import {
   emailErrorMessage,
   loadEmailConfiguration,
@@ -25,12 +25,12 @@ import {
   saveGroupRecipients,
   sendRequisitionEmail,
   unsendableStatusMessage
-} from "./api.js?v=2.0.0-rc.12";
+} from "./api.js?v=2.0.0-rc.13";
 import {
   EMAIL_PERMISSIONS,
   canManageEmailDistribution,
   hasEmailPermission
-} from "./permissions.js?v=2.0.0-rc.12";
+} from "./permissions.js?v=2.0.0-rc.13";
 
 export function getEmailButtonState({ permitted, status = "draft", online = true, syncStatus = "pending" }) {
   const awaitingSubmission = ["draft", "review"].includes(status);
@@ -75,6 +75,7 @@ export function createEmailDistributionController(options) {
     previews: [],
     sends: [],
     sending: false,
+    adminNotice: null,
     operationIds: new Map()
   };
 
@@ -526,6 +527,10 @@ export function createEmailDistributionController(options) {
     event.preventDefault();
     const context = options.getContext();
     const form = event.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    model.adminNotice = null;
+    setAdminFormStatus(form, "Guardando...");
+    if (submitButton) submitButton.disabled = true;
     try {
       if (form.id === "emailSettingsForm") {
         await saveEmailSettings(context.organizationId, {
@@ -544,6 +549,11 @@ export function createEmailDistributionController(options) {
           recipientType: form.elements.recipientType.value,
           active: form.elements.active.checked
         });
+        model.adminNotice = {
+          formId: form.id,
+          message: "Destinatario guardado correctamente.",
+          type: "success"
+        };
         options.toast("Destinatario guardado.");
       }
       if (form.id === "emailGroupForm") {
@@ -584,7 +594,11 @@ export function createEmailDistributionController(options) {
       }
       await renderAdmin();
     } catch (error) {
-      options.toast(friendlyError(error, "No se pudo guardar la configuracion."));
+      const message = adminSaveError(error);
+      setAdminFormStatus(form, message, "error");
+      options.toast(message);
+    } finally {
+      if (submitButton?.isConnected) submitButton.disabled = false;
     }
   }
 
@@ -699,11 +713,18 @@ export function createEmailDistributionController(options) {
         <div class="form-grid"><label>Nombre<input name="name" required maxlength="120" /></label><label>Departamento o funcion<input name="departmentLabel" maxlength="120" /></label><label>Correo<input name="email" type="email" required maxlength="254" /></label><label>Tipo<select name="recipientType">${recipientTypeOptions()}</select></label></div>
         <label class="check-row"><input name="active" type="checkbox" checked /><span>Activo</span></label>
         <button type="submit">Guardar destinatario</button>
+        ${adminNoticeMarkup("emailRecipientForm")}
         <div class="email-admin-list">${configuration.recipients.map((recipient) => `<div class="email-admin-row"><span><strong>${escapeHtml(recipient.name)}</strong><small>${escapeHtml(recipient.email)} · ${escapeHtml(recipientRoleLabel(recipient.recipient_type))}</small></span><div class="card-actions"><button class="secondary" data-edit-email-recipient="${escapeHtml(recipient.id)}" type="button">Editar</button><button class="${recipient.active ? "danger" : "secondary"}" data-toggle-email-recipient="${escapeHtml(recipient.id)}" type="button">${recipient.active ? "Desactivar" : "Activar"}</button></div></div>`).join("") || '<p class="hint">No hay destinatarios configurados.</p>'}</div>
       </form>` : ""}
       ${canGroups ? `<form class="settings-card" id="emailGroupForm"><h3>Grupos</h3><input name="id" type="hidden" /><div class="form-grid"><label>Nombre<input name="name" required maxlength="120" /></label><label>Codigo<input name="code" required maxlength="40" pattern="[A-Z0-9_-]+" /></label><label>Descripcion<input name="description" maxlength="500" /></label></div><label class="check-row"><input name="active" type="checkbox" checked /><span>Activo</span></label><button type="submit">Guardar grupo</button><div class="email-admin-list">${configuration.groups.map((group) => `<div class="email-admin-row"><span><strong>${escapeHtml(group.name)}</strong><small>${escapeHtml(group.code)} · ${group.active ? "Activo" : "Inactivo"}</small></span><button class="secondary" data-edit-email-group="${escapeHtml(group.id)}" type="button">Editar</button></div>`).join("")}</div></form>
       <section class="settings-card"><h3>Miembros por grupo</h3><label>Grupo<select id="emailAdminGroupSelect">${configuration.groups.filter((group) => group.active).map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.name)}</option>`).join("")}</select></label><form id="emailGroupMembersForm" class="email-admin-group-editor"><input name="groupId" type="hidden" /><div data-group-member-list></div><button type="submit">Guardar miembros</button></form></section>
       <form class="settings-card" id="emailRuleForm"><h3>Reglas</h3><div class="form-grid"><label>Nombre<input name="name" required maxlength="120" /></label><label>Tipo<select name="ruleType"><option value="category">Categoria</option><option value="explicit_event">Evento explicito</option><option value="custom">Personalizada</option></select></label><label>Coincidencia<input name="matchValue" maxlength="160" /></label><label>Grupo<select name="groupId">${configuration.groups.filter((group) => group.active).map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.name)}</option>`).join("")}</select></label><label>Prioridad<input name="priority" type="number" min="0" max="10000" value="100" /></label></div><button type="submit">Agregar regla</button><div class="email-admin-list">${configuration.rules.map((rule) => `<div class="email-admin-row"><span><strong>${escapeHtml(rule.name)}</strong><small>${escapeHtml(rule.rule_type)} · ${escapeHtml(rule.match_value)}</small></span><button class="${rule.active ? "danger" : "secondary"}" data-toggle-email-rule="${escapeHtml(rule.id)}" type="button">${rule.active ? "Desactivar" : "Activar"}</button></div>`).join("")}</div></form>` : ""}`;
+  }
+
+  function adminNoticeMarkup(formId) {
+    const notice = model.adminNotice?.formId === formId ? model.adminNotice : null;
+    const type = notice?.type === "error" ? " error" : notice ? " success" : "";
+    return `<p class="admin-form-status${type}" data-admin-form-status role="status" aria-live="polite">${escapeHtml(notice?.message || "")}</p>`;
   }
 
   function showErrors(errors) {
@@ -828,4 +849,27 @@ function friendlyError(error, fallback) {
   if (error?.isSafeForUser || ["sync_pending", "requisition_not_found"].includes(error?.code)) return message;
   if (message.includes("Failed to fetch")) return "No hay conexion con el servicio de correo.";
   return fallback;
+}
+
+export function adminSaveError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "").toLowerCase();
+  if (code === "23505" || message.includes("duplicate key")) {
+    return "Ese correo ya existe en esta organización. Use Editar para actualizarlo.";
+  }
+  if (code === "42501" || message.includes("permission denied") || message.includes("row-level security")) {
+    return "Su sesión no tiene permiso para administrar destinatarios. Vuelva a iniciar sesión.";
+  }
+  if (message.includes("failed to fetch")) {
+    return "No se pudo conectar con Supabase. Revise la conexión e inténtelo nuevamente.";
+  }
+  return "No se pudo guardar el destinatario. Revise los datos e inténtelo nuevamente.";
+}
+
+function setAdminFormStatus(form, message, type = "") {
+  const status = form?.querySelector?.("[data-admin-form-status]");
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle("error", type === "error");
+  status.classList.toggle("success", type === "success");
 }

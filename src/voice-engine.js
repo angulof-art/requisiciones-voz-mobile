@@ -1,5 +1,5 @@
-import { normalizeText, scoreProductName } from "./catalog.js?v=2.0.0-rc.12";
-import { parseRequisitionText } from "./parser.js?v=2.0.0-rc.12";
+import { normalizeText, scoreProductName } from "./catalog.js?v=2.0.0-rc.13";
+import { parseRequisitionText } from "./parser.js?v=2.0.0-rc.13";
 
 export function processVoiceRequest(text, currentItems = [], catalog = []) {
   const originalText = String(text || "").trim();

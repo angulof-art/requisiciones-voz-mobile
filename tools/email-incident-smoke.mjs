@@ -12,6 +12,7 @@ import { validateDistribution } from "../src/email/distribution.js";
 import { buildEmailPreview } from "../src/email/preview.js";
 import {
   acquireEmailSendLock,
+  adminSaveError,
   getEmailButtonState,
   prepareRequisitionForEmail,
   releaseEmailSendLock
@@ -65,6 +66,14 @@ const refreshedReview = await prepareRequisitionForEmail({
 });
 assert.equal(refreshedReview.status, "review");
 assert.deepEqual(preparationCalls, ["sync:req-stale-email", "refresh:req-stale-email"]);
+assert.equal(
+  adminSaveError({ code: "23505", message: "duplicate key value" }),
+  "Ese correo ya existe en esta organización. Use Editar para actualizarlo."
+);
+assert.equal(
+  adminSaveError({ code: "42501", message: "row-level security policy" }),
+  "Su sesión no tiene permiso para administrar destinatarios. Vuelva a iniciar sesión."
+);
 
 await assert.rejects(() => prepareRequisitionForEmail({
   requisitionId: "req-still-pending",
