@@ -11,9 +11,9 @@ import {
   setRecipientSelected,
   splitItemsByDistribution,
   validateDistribution
-} from "./distribution.js?v=2.0.0-rc.13";
-import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.13";
-import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.13";
+} from "./distribution.js?v=2.0.0-rc.14";
+import { buildEmailPreview, escapeHtml } from "./preview.js?v=2.0.0-rc.14";
+import { dedupeRequisitionItemsById } from "../requisitions.js?v=2.0.0-rc.14";
 import {
   emailErrorMessage,
   loadEmailConfiguration,
@@ -25,12 +25,12 @@ import {
   saveGroupRecipients,
   sendRequisitionEmail,
   unsendableStatusMessage
-} from "./api.js?v=2.0.0-rc.13";
+} from "./api.js?v=2.0.0-rc.14";
 import {
   EMAIL_PERMISSIONS,
   canManageEmailDistribution,
   hasEmailPermission
-} from "./permissions.js?v=2.0.0-rc.13";
+} from "./permissions.js?v=2.0.0-rc.14";
 
 export function getEmailButtonState({ permitted, status = "draft", online = true, syncStatus = "pending" }) {
   const awaitingSubmission = ["draft", "review"].includes(status);
@@ -47,6 +47,13 @@ export function getEmailButtonState({ permitted, status = "draft", online = true
         ? "El envío por correo necesita conexión."
         : emailUnavailable ? "Sincronice el pedido antes de enviarlo por correo." : ""
   };
+}
+
+export function getNamedFormControl(form, name) {
+  const control = form?.elements?.namedItem?.(name)
+    || form?.querySelector?.(`[name="${name}"]`);
+  if (!control) throw new Error(`No se encontro el campo ${name}.`);
+  return control;
 }
 
 export async function prepareRequisitionForEmail({
@@ -534,20 +541,20 @@ export function createEmailDistributionController(options) {
     try {
       if (form.id === "emailSettingsForm") {
         await saveEmailSettings(context.organizationId, {
-          enabled: form.elements.enabled.checked,
-          allowExternal: form.elements.allowExternal.checked,
-          maxRecipients: form.elements.maxRecipients.value
+          enabled: getNamedFormControl(form, "enabled").checked,
+          allowExternal: getNamedFormControl(form, "allowExternal").checked,
+          maxRecipients: getNamedFormControl(form, "maxRecipients").value
         });
         options.toast("Configuracion de correo guardada.");
       }
       if (form.id === "emailRecipientForm") {
         await saveEmailRecipient(context.organizationId, context.userId, {
-          id: form.elements.id.value,
-          name: form.elements.name.value,
-          departmentLabel: form.elements.departmentLabel.value,
-          email: form.elements.email.value,
-          recipientType: form.elements.recipientType.value,
-          active: form.elements.active.checked
+          id: getNamedFormControl(form, "id").value,
+          name: getNamedFormControl(form, "name").value,
+          departmentLabel: getNamedFormControl(form, "departmentLabel").value,
+          email: getNamedFormControl(form, "email").value,
+          recipientType: getNamedFormControl(form, "recipientType").value,
+          active: getNamedFormControl(form, "active").checked
         });
         model.adminNotice = {
           formId: form.id,
@@ -558,27 +565,27 @@ export function createEmailDistributionController(options) {
       }
       if (form.id === "emailGroupForm") {
         await saveDistributionGroup(context.organizationId, context.userId, {
-          id: form.elements.id.value,
-          name: form.elements.name.value,
-          code: form.elements.code.value,
-          description: form.elements.description.value,
-          active: form.elements.active.checked
+          id: getNamedFormControl(form, "id").value,
+          name: getNamedFormControl(form, "name").value,
+          code: getNamedFormControl(form, "code").value,
+          description: getNamedFormControl(form, "description").value,
+          active: getNamedFormControl(form, "active").checked
         });
         options.toast("Grupo guardado.");
       }
       if (form.id === "emailRuleForm") {
         await saveDistributionRule(context.organizationId, context.userId, {
-          name: form.elements.name.value,
-          ruleType: form.elements.ruleType.value,
-          matchValue: form.elements.matchValue.value,
-          groupId: form.elements.groupId.value,
-          priority: form.elements.priority.value,
+          name: getNamedFormControl(form, "name").value,
+          ruleType: getNamedFormControl(form, "ruleType").value,
+          matchValue: getNamedFormControl(form, "matchValue").value,
+          groupId: getNamedFormControl(form, "groupId").value,
+          priority: getNamedFormControl(form, "priority").value,
           active: true
         });
         options.toast("Regla guardada.");
       }
       if (form.id === "emailGroupMembersForm") {
-        const groupId = form.elements.groupId.value;
+        const groupId = getNamedFormControl(form, "groupId").value;
         const desired = [...form.querySelectorAll("[data-admin-recipient]")]
           .filter((row) => row.querySelector('[name="included"]').checked)
           .map((row, index) => ({
@@ -659,7 +666,7 @@ export function createEmailDistributionController(options) {
     const form = elements.adminRoot.querySelector("#emailGroupMembersForm");
     if (!form) return;
     const groupId = elements.adminRoot.querySelector("#emailAdminGroupSelect")?.value;
-    form.elements.groupId.value = groupId || "";
+    getNamedFormControl(form, "groupId").value = groupId || "";
     const links = model.configuration.groupRecipients.filter((entry) => entry.group_id === groupId);
     form.querySelector("[data-group-member-list]").innerHTML = model.configuration.recipients
       .filter((entry) => entry.active)
@@ -677,23 +684,23 @@ export function createEmailDistributionController(options) {
   function populateRecipientForm(recipient) {
     const form = elements.adminRoot.querySelector("#emailRecipientForm");
     if (!form || !recipient) return;
-    form.elements.id.value = recipient.id;
-    form.elements.name.value = recipient.name;
-    form.elements.departmentLabel.value = recipient.department_label;
-    form.elements.email.value = recipient.email;
-    form.elements.recipientType.value = recipient.recipient_type;
-    form.elements.active.checked = recipient.active;
+    getNamedFormControl(form, "id").value = recipient.id;
+    getNamedFormControl(form, "name").value = recipient.name;
+    getNamedFormControl(form, "departmentLabel").value = recipient.department_label;
+    getNamedFormControl(form, "email").value = recipient.email;
+    getNamedFormControl(form, "recipientType").value = recipient.recipient_type;
+    getNamedFormControl(form, "active").checked = recipient.active;
     form.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function populateGroupForm(group) {
     const form = elements.adminRoot.querySelector("#emailGroupForm");
     if (!form || !group) return;
-    form.elements.id.value = group.id;
-    form.elements.name.value = group.name;
-    form.elements.code.value = group.code;
-    form.elements.description.value = group.description;
-    form.elements.active.checked = group.active;
+    getNamedFormControl(form, "id").value = group.id;
+    getNamedFormControl(form, "name").value = group.name;
+    getNamedFormControl(form, "code").value = group.code;
+    getNamedFormControl(form, "description").value = group.description;
+    getNamedFormControl(form, "active").checked = group.active;
     form.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 

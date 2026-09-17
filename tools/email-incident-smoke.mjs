@@ -13,6 +13,7 @@ import { buildEmailPreview } from "../src/email/preview.js";
 import {
   acquireEmailSendLock,
   adminSaveError,
+  getNamedFormControl,
   getEmailButtonState,
   prepareRequisitionForEmail,
   releaseEmailSendLock
@@ -73,6 +74,24 @@ assert.equal(
 assert.equal(
   adminSaveError({ code: "42501", message: "row-level security policy" }),
   "Su sesión no tiene permiso para administrar destinatarios. Vuelva a iniciar sesión."
+);
+
+const controls = new Map([
+  ["id", { value: "" }],
+  ["name", { value: "Nuevo destinatario" }],
+  ["email", { value: "nuevo@example.test" }]
+]);
+const formWithNamedItems = {
+  elements: {
+    namedItem: (name) => controls.get(name) || null
+  }
+};
+assert.equal(getNamedFormControl(formWithNamedItems, "id").value, "");
+assert.equal(getNamedFormControl(formWithNamedItems, "name").value, "Nuevo destinatario");
+assert.equal(getNamedFormControl(formWithNamedItems, "email").value, "nuevo@example.test");
+assert.throws(
+  () => getNamedFormControl(formWithNamedItems, "missing"),
+  /No se encontro el campo missing/
 );
 
 await assert.rejects(() => prepareRequisitionForEmail({
